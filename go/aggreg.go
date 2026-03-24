@@ -52,17 +52,6 @@ func Aggregate[T any](in <-chan T, out chan<- T, op Op[T], ws Next[Window]) {
         w.Right -= (n - len(ds))
 
         // Skip data elements on the left side of the window.
-        /*
-        for w.Left > 0 {
-            w.Left--
-            w.Right--
-            if len(ds) > 0 {
-                ds = ds[1:]
-            } else if !next(false) {
-                panic("incomplete window")
-            }
-        }
-        */
         if len(ds) > w.Left {
             ds = ds[w.Left:]
         } else {
