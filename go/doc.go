@@ -8,3 +8,5 @@ package sliding
 // * Implement sliding window algorithm (associative operator).
 // * Improve API.
 // * Document code and package.
+// * Provide implementation that is compatible with the pipeline package.
+
