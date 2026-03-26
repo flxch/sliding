@@ -1,5 +1,9 @@
 package sliding
 
+import (
+    "fmt"
+)
+
 
 // `Aggregate` agreggrates elements of a data stream over type T within windows.
 // It uses the function `op` for aggregation.  No assumption are made on `op`.
@@ -78,4 +82,106 @@ func Aggregate[T any](in <-chan T, out chan<- T, op Op[T], ws Next[Window]) {
         // Send aggregated value over channel.
         out <- aggregate(ds)
     }
+}
+
+
+type Aggreg[T any] struct {
+    // Static.
+    in     <-chan T
+    op     Op[T]
+    next   Next[Window]
+    // Dynamic.
+    // Data elements that must be skipped for next window.
+    skip   int
+    // Current window.
+    window Window
+    // Buffered data elements within current window.
+    elems  []T
+}
+
+func NewAggreg[T any](in <-chan T, op Op[T], next Next[Window]) *Aggreg[T] {
+    w, ok := next()
+    if !ok {
+        return nil
+    }
+    return &Aggreg[T]{
+        in:     in,
+        op:     op,
+        next:   next,
+        skip:   w.Left,
+        window: w,
+    }
+}
+
+func (aggreg *Aggreg[T]) aggregate() (T, error) {
+    var r T
+    if len(aggreg.elems) == 0 {
+        return r, fmt.Errorf("empty window")
+    }
+    if len(aggreg.elems) == 1 {
+        return aggreg.elems[0], nil
+    }
+    r = aggreg.op(aggreg.elems[0], aggreg.elems[1])
+    for _, elem := range aggreg.elems[2:] {
+        r = aggreg.op(r, elem)
+    }
+    return r, nil
+}
+
+func (aggreg *Aggreg[T]) nextWindow() (Window, error) {
+    w := aggreg.window
+    var ok bool
+    aggreg.window, ok = aggreg.next()
+    if !ok {
+        return Window{}, fmt.Errorf("failed to move window")
+    }
+    if k := aggreg.window.Left - w.Left; k < len(aggreg.elems) {
+        aggreg.elems = aggreg.elems[k:]
+    } else {
+        aggreg.elems = aggreg.elems[:0]
+        aggreg.skip = k
+    }
+    return w, nil
+}
+
+// Step is called when a new element is received.
+func (aggreg *Aggreg[T]) Step(elem T, out chan<- T) error {
+    if aggreg.skip > 0 {
+        aggreg.skip--
+        return nil
+    }
+
+    // Buffer newly received element.
+    aggreg.elems = append(aggreg.elems, elem)
+
+    // If window is complete, send aggregated value over output channel.
+    if len(aggreg.elems) == aggreg.window.Right - aggreg.window.Left + 1 {
+        s, err := aggreg.aggregate()
+        if err != nil {
+            return fmt.Errorf("failed to aggregate values in window: %w", err)
+        }
+
+        // Send aggregated values as long as the right window bound does not
+        // move.
+        w := aggreg.window
+        for aggreg.window.Right == w.Right {
+            if aggreg.window.Left > w.Left {
+                // The left bound has moved; recompute aggregation.
+                if s, err = aggreg.aggregate(); err != nil {
+                    // TODO: We return an error here. This leads to a
+                    // inconsistent state.  How do we get to a safe state before
+                    // we return an error.  The same problem happens above.
+                    return fmt.Errorf("failed to aggregate values in window: %w", err)
+                }
+            }
+
+            out <- s
+
+            if w, err = aggreg.nextWindow(); err != nil {
+                return err
+            }
+        }
+    }
+
+    return nil
 }

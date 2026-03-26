@@ -1,7 +1,9 @@
 package sliding
 
 import (
+    "bytes"
     "fmt"
+    "github.com/flxch/pipeline"
 )
 
 
@@ -87,3 +89,45 @@ func ExampleAggregate() {
     // barbaz
     // baz
 }
+
+
+// Sliding window as a pipeline stage.
+func ExampleAggreg() {
+    inbuf := bytes.NewBuffer([]byte("Hello, World!"))
+    outbuf := bytes.NewBuffer(nil)
+
+    // Define pipeline.
+    p := pipeline.New(nil, 1, 1, 0)
+    // Spout:
+    inch := pipeline.AddSpout(p, "input", inbuf,
+        func(in []byte) (byte, error) { return in[0], nil })
+    // Stage (with aggregation):
+    window := Window{-1, 0}
+    aggreg := NewAggreg(inch,
+        func(s, t byte) byte { return s + t },
+        func() (Window, bool) {
+            window = Window{window.Left + 1, window.Right + 1}
+            return window, true
+        })
+    outch := pipeline.AddStage(p, "aggregation", inch, aggreg.Step)
+    // Sink:
+    pipeline.AddSink(p, "output", outch, outbuf,
+        func(data byte) ([]byte, error) { return []byte{data}, nil })
+
+    // Run pipeline.
+    p.Run()
+    // Wait until the input buffer is empty.
+    for inbuf.Len() > 0 { }
+    // Close pipeline.  This includes waiting until all the goroutines of the
+    // pipeline stages terminated.
+    if err := p.Close(); err != nil {
+        panic(fmt.Sprintf("failed to close pipeline: %v", err))
+    }
+
+    // Print received data.
+    fmt.Printf("%v\n", outbuf.Bytes())
+
+    // Output:
+    // [173 209 216 219 155 76 119 198 225 222 208 133]
+}
+
