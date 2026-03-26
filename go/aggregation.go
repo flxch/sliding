@@ -85,7 +85,7 @@ func Aggregate[T any](in <-chan T, out chan<- T, op Op[T], ws Next[Window]) {
 }
 
 
-type Aggreg[T any] struct {
+type Aggregation[T any] struct {
     // Static.
     in     <-chan T
     op     Op[T]
@@ -99,12 +99,12 @@ type Aggreg[T any] struct {
     elems  []T
 }
 
-func NewAggreg[T any](in <-chan T, op Op[T], next Next[Window]) *Aggreg[T] {
+func NewAggregation[T any](in <-chan T, op Op[T], next Next[Window]) *Aggregation[T] {
     w, ok := next()
     if !ok {
         return nil
     }
-    return &Aggreg[T]{
+    return &Aggregation[T]{
         in:     in,
         op:     op,
         next:   next,
@@ -113,7 +113,7 @@ func NewAggreg[T any](in <-chan T, op Op[T], next Next[Window]) *Aggreg[T] {
     }
 }
 
-func (aggreg *Aggreg[T]) aggregate() (T, error) {
+func (aggreg *Aggregation[T]) aggregate() (T, error) {
     var r T
     if len(aggreg.elems) == 0 {
         return r, fmt.Errorf("empty window")
@@ -128,7 +128,7 @@ func (aggreg *Aggreg[T]) aggregate() (T, error) {
     return r, nil
 }
 
-func (aggreg *Aggreg[T]) nextWindow() (Window, error) {
+func (aggreg *Aggregation[T]) nextWindow() (Window, error) {
     w := aggreg.window
     var ok bool
     aggreg.window, ok = aggreg.next()
@@ -145,7 +145,7 @@ func (aggreg *Aggreg[T]) nextWindow() (Window, error) {
 }
 
 // Step is called when a new element is received.
-func (aggreg *Aggreg[T]) Step(elem T, out chan<- T) error {
+func (aggreg *Aggregation[T]) Step(elem T, out chan<- T) error {
     if aggreg.skip > 0 {
         aggreg.skip--
         return nil

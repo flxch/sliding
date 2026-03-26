@@ -92,25 +92,26 @@ func ExampleAggregate() {
 
 
 // Sliding window as a pipeline stage.
-func ExampleAggreg() {
+func ExampleAggregation() {
     inbuf := bytes.NewBuffer([]byte("Hello, World!"))
     outbuf := bytes.NewBuffer(nil)
 
-    // Define pipeline.
+    // Define pipeline comprising spout, stage, and sink.
     p := pipeline.New(nil, 1, 1, 0)
-    // Spout:
+    // 1. Spout:
     inch := pipeline.AddSpout(p, "input", inbuf,
         func(in []byte) (byte, error) { return in[0], nil })
-    // Stage (with aggregation):
+    // 2. Stage (with aggregation over a window containing two elements):
     window := Window{-1, 0}
-    aggreg := NewAggreg(inch,
+    aggreg := NewAggregation(inch,
         func(s, t byte) byte { return s + t },
         func() (Window, bool) {
+            // Move sliding window always by one element to the right.
             window = Window{window.Left + 1, window.Right + 1}
             return window, true
         })
     outch := pipeline.AddStage(p, "aggregation", inch, aggreg.Step)
-    // Sink:
+    // 3. Sink:
     pipeline.AddSink(p, "output", outch, outbuf,
         func(data byte) ([]byte, error) { return []byte{data}, nil })
 
