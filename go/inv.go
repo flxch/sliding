@@ -59,3 +59,28 @@ func AggregateInv[T any](in <-chan T, out chan<- T, op, inv Op[T], ws Next[Windo
     }
 }
 
+
+type InvAggregation[T any] struct {
+    // Static.
+    in     <-chan T
+    op     Op[T]
+    inv    Op[T]
+    next   Next[Window]
+    // Dynamic.
+    // ...
+}
+
+func NewInvAggregation[T any](in <-chan T, op, inv Op[T], next Next[Window]) *InvAggregation[T] {
+    return &InvAggregation[T]{
+        in:     in,
+        op:     op,
+        inv:    inv,
+        next:   next,
+    }
+}
+
+
+func (aggreg *InvAggregation[T]) Step(elem T, out chan<- T) error {
+    // ...
+    return nil
+}

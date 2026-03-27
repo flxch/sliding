@@ -1,13 +1,14 @@
-package sliding
+package sliding_test
 
 import (
     "fmt"
     "slices"
     "testing"
+    "github.com/flxch/sliding"
 )
 
 
-func runAggregateInvTest[T any](op, inv Op[T], elems []T, windows []Window) (res []T, err error) {
+func runAggregateInvTest[T any](op, inv sliding.Op[T], elems []T, windows []sliding.Window) (res []T, err error) {
     in := make(chan T, 0)
     go func() {
         for _, s := range elems {
@@ -26,9 +27,9 @@ func runAggregateInvTest[T any](op, inv Op[T], elems []T, windows []Window) (res
     }()
 
     var d int
-    next := func() (Window, bool) {
+    next := func() (sliding.Window, bool) {
         if d >= len(windows) {
-            return Window{}, false
+            return sliding.Window{}, false
         }
         defer func() { d++ }()
         return windows[d], true
@@ -40,7 +41,7 @@ func runAggregateInvTest[T any](op, inv Op[T], elems []T, windows []Window) (res
             err = fmt.Errorf("panic: %v", r)
         }
     }()
-    AggregateInv(in, out, op, inv, next)
+    sliding.AggregateInv(in, out, op, inv, next)
 
     close(out)
     <-wait
@@ -50,10 +51,10 @@ func runAggregateInvTest[T any](op, inv Op[T], elems []T, windows []Window) (res
 
 func TestAggregateInv(t *testing.T) {
     type testcase struct {
-        op       Op[int]
-        inv      Op[int]
+        op       sliding.Op[int]
+        inv      sliding.Op[int]
         elems    []int
-        windows  []Window
+        windows  []sliding.Window
         expected []int
     }
     tcs := []testcase{
@@ -61,35 +62,45 @@ func TestAggregateInv(t *testing.T) {
             op:       func(s, t int) int { return s + t },
             inv:      func(s, t int) int { return s - t },
             elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-            windows:  []Window{},
+            windows:  []sliding.Window{},
             expected: []int{},
         },
         testcase{
             op:       func(s, t int) int { return s + t },
             inv:      func(s, t int) int { return s - t },
             elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-            windows:  []Window{Window{0,9}},
+            windows:  []sliding.Window{sliding.Window{0,9}},
             expected: []int{45},
         },
         testcase{
             op:       func(s, t int) int { return s + t },
             inv:      func(s, t int) int { return s - t },
             elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-            windows:  []Window{Window{0,0}, Window{1,1}, Window{2,2}, Window{3,3}},
+            windows:  []sliding.Window{
+                sliding.Window{0,0},
+                sliding.Window{1,1},
+                sliding.Window{2,2},
+                sliding.Window{3,3}},
             expected: []int{0, 1, 2, 3},
         },
         testcase{
             op:       func(s, t int) int { return s + t },
             inv:      func(s, t int) int { return s - t },
             elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-            windows:  []Window{Window{0,1}, Window{4,6}},
+            windows:  []sliding.Window{
+                sliding.Window{0,1},
+                sliding.Window{4,6}},
             expected: []int{1, 15},
         },
         testcase{
             op:       func(s, t int) int { return s + t },
             inv:      func(s, t int) int { return s - t },
             elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-            windows:  []Window{Window{2,3}, Window{2,3}, Window{2,5}, Window{9,9}},
+            windows:  []sliding.Window{
+                sliding.Window{2,3},
+                sliding.Window{2,3},
+                sliding.Window{2,5},
+                sliding.Window{9,9}},
             expected: []int{5, 5, 14, 9},
         },
     }

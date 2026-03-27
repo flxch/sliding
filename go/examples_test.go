@@ -1,9 +1,10 @@
-package sliding
+package sliding_test
 
 import (
     "bytes"
     "fmt"
     "github.com/flxch/pipeline"
+    "github.com/flxch/sliding"
 )
 
 
@@ -48,29 +49,29 @@ func ExampleAggregate() {
     }()
 
     // Function for returning the next window.
-    windows := []Window{
-        Window{0, 0},   // "Hello"
-        Window{0, 3},   // "Hello" ", " "World" "!"
-        Window{2, 3},   // "World" "!"
-        Window{5, 6},   // "foo" "goo"
-        Window{5, 6},   // "foo" "goo"
-        Window{5, 7},   // "foo" "goo" "moo"
-        Window{6, 7},   // "goo" "moo"
-        Window{7, 8},   // "moo" "hoo"
-        Window{9, 10},  // "bar" "baz"
-        Window{10, 10}, // "baz"
+    windows := []sliding.Window{
+        sliding.Window{0, 0},   // "Hello"
+        sliding.Window{0, 3},   // "Hello" ", " "World" "!"
+        sliding.Window{2, 3},   // "World" "!"
+        sliding.Window{5, 6},   // "foo" "goo"
+        sliding.Window{5, 6},   // "foo" "goo"
+        sliding.Window{5, 7},   // "foo" "goo" "moo"
+        sliding.Window{6, 7},   // "goo" "moo"
+        sliding.Window{7, 8},   // "moo" "hoo"
+        sliding.Window{9, 10},  // "bar" "baz"
+        sliding.Window{10, 10}, // "baz"
     }
     var d int // index in window stream
-    next := func() (Window, bool) {
+    next := func() (sliding.Window, bool) {
         if d >= len(windows) {
-            return Window{}, false
+            return sliding.Window{}, false
         }
         defer func() { d++ }()
         return windows[d], true
     }
 
     // Run the sliding window algorithm.
-    Aggregate(in, out, op, next)
+    sliding.Aggregate(in, out, op, next)
 
     // Signal the outputter goroutine to terminate and wait until all aggregated
     // values have been printed, i.e., the goroutine has terminated.
@@ -102,12 +103,12 @@ func ExampleAggregation() {
     inch := pipeline.AddSpout(p, "input", inbuf,
         func(in []byte) (byte, error) { return in[0], nil })
     // 2. Stage (with aggregation over a window containing two elements):
-    window := Window{-1, 0}
-    aggreg := NewAggregation(inch,
+    window := sliding.Window{-1, 0}
+    aggreg := sliding.NewAggregation(inch,
         func(s, t byte) byte { return s + t },
-        func() (Window, bool) {
+        func() (sliding.Window, bool) {
             // Move sliding window always by one element to the right.
-            window = Window{window.Left + 1, window.Right + 1}
+            window = sliding.Window{window.Left + 1, window.Right + 1}
             return window, true
         })
     outch := pipeline.AddStage(p, "aggregation", inch, aggreg.Step)
