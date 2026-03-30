@@ -103,7 +103,7 @@ func NewAggregation[T any](in <-chan T, op Op[T], next Next[Window]) *Aggregatio
     w, ok := next()
     if !ok {
         // Special case: no window.
-        w = invalidWindow
+        return nil
     }
     return &Aggregation[T]{
         in:     in,
@@ -137,7 +137,7 @@ func (aggreg *Aggregation[T]) nextWindow() (Window, error) {
     var ok bool
     aggreg.window, ok = aggreg.next()
     if !ok {
-        return invalidWindow, fmt.Errorf("failed to move window")
+        return Window{}, fmt.Errorf("failed to move window")
     }
     if k := aggreg.window.Left - w.Left; k < len(aggreg.elems) {
         aggreg.elems = aggreg.elems[k:]
@@ -150,7 +150,7 @@ func (aggreg *Aggregation[T]) nextWindow() (Window, error) {
 
 // Step is called when a new element is received.
 func (aggreg *Aggregation[T]) Step(elem T, out chan<- T) error {
-    if aggreg.skip == -1 {
+    if aggreg == nil {
         // Special case: no window.
         return nil
     }
