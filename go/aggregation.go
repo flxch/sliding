@@ -102,7 +102,8 @@ type Aggregation[T any] struct {
 func NewAggregation[T any](in <-chan T, op Op[T], next Next[Window]) *Aggregation[T] {
     w, ok := next()
     if !ok {
-        return nil
+        // Special case: no window.
+        w = invalidWindow
     }
     return &Aggregation[T]{
         in:     in,
@@ -113,6 +114,8 @@ func NewAggregation[T any](in <-chan T, op Op[T], next Next[Window]) *Aggregatio
     }
 }
 
+// Aggregate data elements.  The function is called when the current window is
+// complete.
 func (aggreg *Aggregation[T]) aggregate() (T, error) {
     var r T
     if len(aggreg.elems) == 0 {
@@ -128,25 +131,31 @@ func (aggreg *Aggregation[T]) aggregate() (T, error) {
     return r, nil
 }
 
+// Set the next window for aggregation.
 func (aggreg *Aggregation[T]) nextWindow() (Window, error) {
     w := aggreg.window
     var ok bool
     aggreg.window, ok = aggreg.next()
     if !ok {
-        return Window{}, fmt.Errorf("failed to move window")
+        return invalidWindow, fmt.Errorf("failed to move window")
     }
     if k := aggreg.window.Left - w.Left; k < len(aggreg.elems) {
         aggreg.elems = aggreg.elems[k:]
     } else {
+        aggreg.skip = k - len(aggreg.elems)
         aggreg.elems = aggreg.elems[:0]
-        aggreg.skip = k
     }
     return w, nil
 }
 
 // Step is called when a new element is received.
 func (aggreg *Aggregation[T]) Step(elem T, out chan<- T) error {
+    if aggreg.skip == -1 {
+        // Special case: no window.
+        return nil
+    }
     if aggreg.skip > 0 {
+        // Skip element since it is not contained in the current window.
         aggreg.skip--
         return nil
     }

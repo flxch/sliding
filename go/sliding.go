@@ -11,6 +11,8 @@ type Window struct {
     Right int
 }
 
+var invalidWindow Window = Window{-1, -1}
+
 
 // Type of a function that provides the next element of a data stream.  If the
 // second return value is false, the stream has no next element.
