@@ -10,15 +10,7 @@ import (
 )
 
 
-type testcase struct {
-    op       sliding.Op[int]
-    inv      sliding.Op[int]
-    elems    []int
-    windows  []sliding.Window
-    expected []int
-}
-
-var tcs = []testcase{
+var aggregationTestcases = []testcase{
     testcase{
         op:       func(s, t int) int { return s + t },
         elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
@@ -62,7 +54,7 @@ var tcs = []testcase{
 }
 
 func TestAggregate(t *testing.T) {
-    for i, tc := range tcs {
+    for i, tc := range aggregationTestcases {
         res, err := runAggregateTest(tc.op, tc.elems, tc.windows)
         if err != nil {
             t.Errorf("#%d: %v", i, err)
@@ -72,9 +64,8 @@ func TestAggregate(t *testing.T) {
     }
 }
 
-
 func TestAggregation(t *testing.T) {
-    for i, tc := range tcs {
+    for i, tc := range aggregationTestcases {
         res, err := runAggregationTest(tc.op, tc.elems, tc.windows)
         if err != nil {
             t.Errorf("#%d: %v", i, err)
@@ -82,7 +73,6 @@ func TestAggregation(t *testing.T) {
             t.Errorf("#%d: expected %v, got %v", i, tc.expected, res)
         }
     }
-
 }
 
 
@@ -131,11 +121,6 @@ func runAggregateTest[T any](op sliding.Op[T], elems []T, windows []sliding.Wind
 
 
 func runAggregationTest(op sliding.Op[int], elems []int, windows []sliding.Window) ([]int, error) {
-    //if len(windows) == 0 {
-    //    // Special case: no window, nothing to test.
-    //    return nil, nil
-    //}
-
     inbuf := bytes.NewBuffer([]byte{})
     for _, n := range elems {
         inbuf.WriteByte(byte(n))

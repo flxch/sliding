@@ -135,8 +135,7 @@ func (aggreg *Aggregation[T]) aggregate() (T, error) {
 func (aggreg *Aggregation[T]) nextWindow() (Window, error) {
     w := aggreg.window
     var ok bool
-    aggreg.window, ok = aggreg.next()
-    if !ok {
+    if aggreg.window, ok = aggreg.next(); !ok {
         return Window{}, fmt.Errorf("failed to move window")
     }
     if k := aggreg.window.Left - w.Left; k < len(aggreg.elems) {
