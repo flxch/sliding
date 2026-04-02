@@ -1,6 +1,9 @@
 package sliding
 
 
+// -----------------------------------------------------------------------------
+// TODO: Use extra package `container/maybe` with the Option[A] type.
+
 // `option[A]` represents an optional value: ok == true means value holds a
 // valid A; ok == false means no value is present.
 type option[A any] struct {
@@ -30,7 +33,7 @@ func liftOp[A any](op Op[A]) Op[option[A]] {
         return some(op(x.value, y.value))
     }
 }
-
+// -----------------------------------------------------------------------------
 
 // `label` holds the data stored at an interior tree node.  `aggregation` is an
 // option: some(v) for live nodes, none for discharged nodes whose aggregate has
@@ -64,9 +67,9 @@ func singleton[A any](i int, x A) tree[A] {
 }
 
 // `combine` merges two trees under a new interior node whose aggregation is
-// op(t1.aggregation, t2.aggregation).  If either tree is a leaf the other is
-// returned as-is.  t1 is discharged and becomes the left child; t2 becomes
-// the right child.
+// `op(t1.aggregation, t2.aggregation)`.  `t1` is discharged and becomes the
+// left child and `t2` becomes the right child.  If either tree is a leaf the
+// other is returned as is.
 func combine[A any](op Op[option[A]], t1, t2 tree[A]) tree[A] {
     switch {
     case t1.data.isNone():
@@ -74,22 +77,21 @@ func combine[A any](op Op[option[A]], t1, t2 tree[A]) tree[A] {
     case t2.data.isNone():
         return t1
     default:
-        d := some(label[A]{
-            left:        t1.data.value.left,
-            right:       t2.data.value.right,
-            aggregation: op(t1.data.value.aggregation, t2.data.value.aggregation),
-        })
+        v := op(t1.data.value.aggregation, t2.data.value.aggregation)
         t1.discharge()
         return tree[A]{
-            data:  d,
+            data:  some(label[A]{
+                left:        t1.data.value.left,
+                right:       t2.data.value.right,
+                aggregation: v,
+            }),
             left:  &t1,
             right: &t2,
         }
     }
 }
 
-// `discharge` returns a copy of `t` with its aggregation cleared to none.
-// The subtree structure (left, right) and index bounds are preserved.
+// `discharge` returns `t` with its aggregation cleared to none.
 func (t *tree[A]) discharge() {
     t.data.value.aggregation = none[A]()
 }
@@ -113,7 +115,7 @@ func (t tree[A]) rightIndex() int {
 
 func (t tree[A]) extract() A {
     if t.data.isNone() || t.data.value.aggregation.isNone() {
-        panic("no value at tree's root")
+        panic("no aggregated value at tree's root")
     }
     return t.data.value.aggregation.value
 }
@@ -142,11 +144,18 @@ func reusables[A any](op Op[option[A]], t tree[A], i int, acc tree[A]) tree[A] {
     }
 }
 
-func slide[A any](op Op[option[A]],	b *buf[A], t tree[A], w Window) tree[A] {
+// `slide` advances the tree by one window step.  It returns the updated tree
+// and true on success, or the zero tree and false if the input channel was
+// closed before all required elements were available.
+func slide[A any](op Op[option[A]],	b *buf[A], t tree[A], w Window) (tree[A], bool) {
     m := max(w.Left, 1 + t.rightIndex())
 
-    b.skip(m)
-    b.fill(w.Right)
+    if !b.skip(m) {
+        return leaf[A](), false
+    }
+    if !b.fill(w.Right) {
+        return leaf[A](), false
+    }
 
     n := w.Right - m + 1
     if m > w.Right {
@@ -163,20 +172,21 @@ func slide[A any](op Op[option[A]],	b *buf[A], t tree[A], w Window) tree[A] {
     r = reusables(op, t, w.Left, r)
 
     b.consume(n)
-    return r
+    return r, true
 }
+
 
 // `AggregateAssoc` computes the aggregation of each window using `op`, which is
 // assumed to be an associative operator.
 // Arguments:
-//   - in:   a channel delivering x_0, x_1, x_2, ... in order (may be infinite)
-//   - out:  a channel on which results y_0, y_1, ... are sent, where
-//     y_i = x[l_i] op x[l_i+1] op ... op x[r_i];
-//     the caller is responsible for closing the channel.
-//   - op:   an associative binary operator
-//   - next: a function returning the next window and true, or (zero, false)
-//     when the window sequence is exhausted; windows must satisfy
-//     0 ≤ l_0 ≤ l_1 ≤ … and 0 ≤ r_0 ≤ r_1 ≤ ... and l_i ≤ r_i
+// - in:   a channel delivering x_0, x_1, x_2, ... in order (may be infinite)
+// - out:  a channel on which results y_0, y_1, ... are sent, where
+//   y_i = x[l_i] op x[l_i+1] op ... op x[r_i].
+//   The caller is responsible for closing the channel.
+// - op:   an associative binary operator
+// - next: a function returning the next window and true, or (zero, false)
+//   when the window sequence is exhausted; windows must satisfy
+//   0 ≤ l_0 ≤ l_1 ≤ … and 0 ≤ r_0 ≤ r_1 ≤ ... and l_i ≤ r_i
 // `AggregateAssoc` reads from `in` only as far as required by the windows seen
 // so far.
 func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window]) {
@@ -188,11 +198,15 @@ func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window
         // Get next window.
         w, ok := next()
         if !ok {
-            // No windows anymore.
+            // No windows anymore.  Stop.
             return
         }
         // Compute aggregation.
-        t = slide(lop, b, t, w)
+        if t, ok = slide(lop, b, t, w); !ok {
+            // No more input elements.  Stop.
+            // Q: Should we return the elements that are in the incomplete window?
+            return
+        }
         // Send aggregated value.
         out <- t.extract()
     }
@@ -213,10 +227,10 @@ func newBuf[A any](ch <-chan A) *buf[A] {
 
 // `skip` discards all elements with absolute index less than `n`, reading and
 // dropping from the channel as needed for elements not yet buffered.
-func (b *buf[A]) skip(n int) {
+func (b *buf[A]) skip(n int) bool {
     drop := n - b.next
     if drop <= 0 {
-        return
+        return true
     }
 
     if k := len(b.elems); drop <= k {
@@ -228,23 +242,26 @@ func (b *buf[A]) skip(n int) {
         b.elems = b.elems[:0]
         for b.next < n {
             if _, ok := <-b.ch; !ok {
-                panic("input channel closed before receiving all required elements")
+                // Input channel closed.  No more elements.  Signal termination.
+                return false
             }
             b.next++
         }
     }
+    return true
 }
 
 // `fill` reads from the channel until the buffer holds all elements with
 // absolute indices up to `n` inclusive.
-func (b *buf[A]) fill(n int) {
+func (b *buf[A]) fill(n int) bool {
     for b.next + len(b.elems) <= n {
         v, ok := <-b.ch
         if !ok {
-            panic("input channel closed before receiving all required elements")
+            return false
         }
         b.elems = append(b.elems, v)
     }
+    return true
 }
 
 // `consume` discards the first `n` buffered elements after they have been
@@ -253,263 +270,3 @@ func (b *buf[A]) consume(n int) {
     b.next += n
     b.elems = b.elems[n:]
 }
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Old code. A few improvements have been made above.
-
-/*
-type label[A any] struct {
-    left  int // left index
-    right int // right index
-    value *A  // nil means no value
-}
-
-type tree[A any] struct {
-    data  *label[A] // nil means Leaf
-    left  *tree[A]  // left child
-    right *tree[A]  // right child
-}
-
-
-// Trees constructors.
-
-func leaf[A any]() *tree[A] {
-    return nil
-}
-
-func singleton[A any](i int, x A) *tree[A] {
-    v := x
-    return &tree[A]{
-        data:  &label[A]{
-            left:  i,
-            right: i,
-            value: &v,
-        },
-        left:  leaf[A](),
-        right: leaf[A](),
-    }
-}
-
-func combine[A any](op func(*A, *A) *A, t1, t2 *tree[A]) *tree[A] {
-    switch {
-    case t2.isLeaf():
-        return t1
-    case t1.isLeaf():
-        return t2
-    default:
-        return &tree[A]{
-            data:  &label[A]{
-                left:  t1.leftIndex(),
-                right: t2.rightIndex(),
-                value: op(t1.value(), t2.value()),
-            },
-            left:  t1.discharge(),
-            right: t2,
-        }
-    }
-}
-
-// Tree selectors.
-
-func (t *tree[A]) isLeaf() bool {
-    return t == nil
-}
-
-func (t *tree[A]) leftIndex() int {
-    if t.isLeaf() {
-        return -1
-    }
-    return t.data.left
-}
-
-func (t *tree[A]) rightIndex() int {
-    if t.isLeaf() {
-        return -1
-    }
-    return t.data.right
-}
-
-func (t *tree[A]) value() *A {
-    if t.isLeaf() {
-        return nil
-    }
-    return t.data.value
-}
-
-func (t *tree[A]) extract() A {
-    if v := t.value(); v != nil {
-        return *v
-    }
-    panic("no value at tree's root")
-}
-
-func (t *tree[A]) children() (*tree[A], *tree[A]) {
-    if !t.isLeaf() {
-        return t.left, t.right
-    }
-    panic("no children at leaf")
-}
-
-// Tree methods.
-
-func (t *tree[A]) discharge() *tree[A] {
-    if t.isLeaf() {
-        return leaf[A]()
-    }
-    return &tree[A]{
-        data:  &label[A]{
-            left:  t.data.left,
-            right: t.data.right,
-            value: nil,
-        },
-        left:  t.left,
-        right: t.right,
-    }
-}
-
-func (t *tree[A]) reusables(i int, op func(*A, *A) *A, acc *tree[A]) *tree[A]  {
-    if i > t.rightIndex() {
-        return acc
-    } else if i == t.leftIndex() {
-        return combine(op, t, acc)
-    } else if r, s := t.children(); i >= s.leftIndex() {
-        return s.reusables(i, op, acc)
-    } else {
-        return r.reusables(i, op, combine(op, s, acc))
-    }
-}
-
-func (t *tree[A]) slide(op func(*A, *A) *A, b *buf[A], w Window) *tree[A] {
-    r := leaf[A]()
-    news := b.take(max(w.Left, 1 + t.rightIndex()), w.Right)
-    for i := len(news) - 1; i >= 0; i-- {
-        r = combine(op, singleton(news[i].index, news[i].value), r)
-    }
-    return t.reusables(w.Left, op, r)
-}
-
-// `AggregateAssoc` computes the aggregation of each window using `op`, which is
-// assumed to be an associative operator.
-// Arguments:
-//   - in:   a channel delivering x_0, x_1, x_2, ... in order (may be infinite)
-//   - out:  a channel on which results y_0, y_1, ... are sent, where
-//     y_i = x[l_i] op x[l_i+1] op ... op x[r_i];
-//     the caller is responsible for closing the channel.
-//   - op:   an associative binary operator
-//   - next: a function returning the next window and true, or (zero, false)
-//     when the window sequence is exhausted; windows must satisfy
-//     0 ≤ l_0 ≤ l_1 ≤ … and 0 ≤ r_0 ≤ r_1 ≤ ... and l_i ≤ r_i
-// `AggregateAssoc` reads from `in` only as far as required by the windows seen
-// so far.
-func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window]) {
-    lop := liftOp(op)
-    buf := newBuf[A](in)
-    t := leaf[A]()
-
-    for {
-        // Get next window.
-        w, ok := next()
-        if !ok {
-            // No windows anymore.
-            return
-        }
-        // Compute aggregation.
-        t = t.slide(lop, buf, w)
-        // Send aggregated value.
-        out <- t.extract()
-    }
-}
-
-
-// `liftOp` turns an associative operator into one that works on *A (option).
-func liftOp[A any](op func(A, A) A) func(*A, *A) *A {
-    return func(x, y *A) *A {
-        if x == nil || y == nil {
-            return nil
-        }
-        v := op(*x, *y)
-        return &v
-    }
-}
-
-
-// `buf` is a FIFO buffer of indexed elements that have been read from the input
-// channel but not yet consumed, i.e., they have not yet aggregated within a
-// window.
-type buf[A any] struct {
-    elems []elem[A] // buffered but unconsumed elements
-    next  int       // index of buf[0] (or of the next channel read if buf is empty)
-    ch    <-chan A  // input channel
-}
-
-// `elem` pairs a zero-based index with a data value.
-type elem[A any] struct {
-    index int
-    value A
-}
-
-func newBuf[A any](ch <-chan A) *buf[A] {
-    return &buf[A]{ch: ch}
-}
-
-// `drop` discards the first `n` buffered elements.
-func (b *buf[A]) drop(n int) {
-    if n > 0 {
-        if n < len(b.elems) {
-            b.next += n
-            b.elems = b.elems[n:]
-        } else {
-            b.next += len(b.elems)
-            b.elems = b.elems[:0]
-        }
-    }
-}
-
-// `read` reads from the channel until the buffer holds all elements with
-// absolute indices up to `n` inclusive.
-func (b *buf[A]) read(n int) {
-    for i := b.next + len(b.elems); i <= n; i++ {
-        v, ok := <-b.ch
-        if !ok {
-            panic("input channel closed before receiving all required elements")
-        }
-        b.elems = append(b.elems, elem[A]{index: i, value: v})
-    }
-}
-
-// `take` returns the elements with absolute indices in [`from`, `to`], reading
-// from the channel as needed and dropping any elements before from that are
-// still sitting in the buffer.
-func (b *buf[A]) take(from, to int) []elem[A] {
-    if to < from {
-        return nil
-    }
-
-    // Discard buffered elements before from.
-    b.drop(from - b.next)
-    // If `from` is still ahead of what we have buffered (because those elements
-    // were never read), drain the channel up to `from-1` without keeping them,
-    // then start buffering from `from`.
-    for b.next < from {
-        if _, ok := <-b.ch; !ok {
-            panic("input channel closed before all receiving all required elements")
-        }
-        b.next++
-    }
-
-    // Pull elements up to `to` from the channel.
-    b.read(to)
-
-    n := to - from + 1
-    // Take elements from buffer.
-    result := b.elems[:n]
-    // Drop elements from buffer.
-    b.elems = b.elems[n:]
-    b.next += n
-
-    return result
-}
-*/
-
-
