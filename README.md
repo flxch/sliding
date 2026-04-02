@@ -51,7 +51,21 @@ languages.
 
 ### Ocaml
 
+Original implementation.  This implementation is also described in the
+paper.  It is based on the a subalgorithm within the monitoring tool
+MONPOLY, which is written in Ocaml.
+
 ### Haskell
+
+The implementation is very close to the Ocaml implementation and was
+done while writing the paper as a simple exercise and out of
+curiosity.  At that time, no real LLMs existed.  In general, I prefer
+the Haskell syntax over the Ocaml syntax.  I find it cleaner and more
+elegant.  This is very subjective though.
+
+Some new features like dealing with "infinite lists" as input directly
+follow from the lazy evaluation of Haskell programs.  This is very
+convenient and makes the Haskell code very succinct and clean.
 
 ### Go
 
