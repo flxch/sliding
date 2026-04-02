@@ -8,6 +8,61 @@ import (
 )
 
 
+var aggregationAssocTestcases []testcase = []testcase{
+    testcase{
+        op:       func(s, t int) int { return s + t },
+        elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+        windows:  []sliding.Window{},
+        expected: []int{},
+    },
+    testcase{
+        op:       func(s, t int) int { return s + t },
+        elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+        windows:  []sliding.Window{sliding.Window{0,9}},
+        expected: []int{45},
+    },
+    testcase{
+        op:       func(s, t int) int { return s + t },
+        elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+        windows:  []sliding.Window{
+            sliding.Window{0,0},
+            sliding.Window{1,1},
+            sliding.Window{2,2},
+            sliding.Window{3,3}},
+        expected: []int{0, 1, 2, 3},
+    },
+    testcase{
+        op:       func(s, t int) int { return s + t },
+        elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+        windows:  []sliding.Window{
+            sliding.Window{0,1},
+            sliding.Window{4,6}},
+        expected: []int{1, 15},
+    },
+    testcase{
+        op:       func(s, t int) int { return s + t },
+        elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+        windows:  []sliding.Window{
+            sliding.Window{2,3},
+            sliding.Window{2,3},
+            sliding.Window{2,5},
+            sliding.Window{9,9}},
+        expected: []int{5, 5, 14, 9},
+    },
+}
+
+func TestAggregateAssoc(t *testing.T) {
+    for i, tc := range aggregationAssocTestcases {
+        res, err := runAggregateAssocTest(tc.op, tc.elems, tc.windows)
+        if err != nil {
+            t.Errorf("#%d: %v", i, err)
+        } else if !slices.Equal(res, tc.expected) {
+            t.Errorf("#%d: expected %v, got %v", i, tc.expected, res)
+        }
+    }
+}
+
+
 func runAggregateAssocTest[T any](op sliding.Op[T], elems []T, windows []sliding.Window) (res []T, err error) {
     in := make(chan T, 0)
     go func() {
@@ -47,64 +102,4 @@ func runAggregateAssocTest[T any](op sliding.Op[T], elems []T, windows []sliding
     <-wait
 
     return res, err
-}
-
-func _TestAggregateAssoc(t *testing.T) {
-    type testcase struct {
-        op       sliding.Op[int]
-        elems    []int
-        windows  []sliding.Window
-        expected []int
-    }
-    tcs := []testcase{
-        testcase{
-            op:       func(s, t int) int { return s + t },
-            elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-            windows:  []sliding.Window{},
-            expected: []int{},
-        },
-        testcase{
-            op:       func(s, t int) int { return s + t },
-            elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-            windows:  []sliding.Window{sliding.Window{0,9}},
-            expected: []int{45},
-        },
-        testcase{
-            op:       func(s, t int) int { return s + t },
-            elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-            windows:  []sliding.Window{
-                sliding.Window{0,0},
-                sliding.Window{1,1},
-                sliding.Window{2,2},
-                sliding.Window{3,3}},
-            expected: []int{0, 1, 2, 3},
-        },
-        testcase{
-            op:       func(s, t int) int { return s + t },
-            elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-            windows:  []sliding.Window{
-                sliding.Window{0,1},
-                sliding.Window{4,6}},
-            expected: []int{1, 15},
-        },
-        testcase{
-            op:       func(s, t int) int { return s + t },
-            elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-            windows:  []sliding.Window{
-                sliding.Window{2,3},
-                sliding.Window{2,3},
-                sliding.Window{2,5},
-                sliding.Window{9,9}},
-            expected: []int{5, 5, 14, 9},
-        },
-    }
-
-    for i, tc := range tcs {
-        res, err := runAggregateAssocTest(tc.op, tc.elems, tc.windows)
-        if err != nil {
-            t.Errorf("#%d: %v", i, err)
-        } else if !slices.Equal(res, tc.expected) {
-            t.Errorf("#%d: expected %v, got %v", i, tc.expected, res)
-        }
-    }
 }
