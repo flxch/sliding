@@ -37,25 +37,15 @@ func lift[A any](op Op[A]) Op[option[A]] {
 // `input` tracks the position of an input channel, allowing elements to be
 // skipped or read one at a time.
 type input[A any] struct {
+    // Channel from which the elements are read.
     ch   <-chan A
-    next int // Absolute index of the next element to be read from the channel `ch`.
+    // Number of received elements, which is equal to the absolute index of the
+    // next element to be read from the channel `ch`.
+    count int
 }
 
 func newInput[A any](ch <-chan A) *input[A] {
     return &input[A]{ch: ch}
-}
-
-// `skip` discards all elements with absolute index smaller than `n` by reading
-// them from the input channel and dropping them.  It returns false if the
-// channel was closed before `n` was reached.
-func (s *input[A]) skip(n int) bool {
-    for s.next < n {
-        if _, ok := <-s.ch; !ok {
-            return false
-        }
-        s.next++
-    }
-    return true
 }
 
 // `read` reads the next element from the input channel, advancing the position.
@@ -64,11 +54,23 @@ func (s *input[A]) skip(n int) bool {
 func (s *input[A]) read() (A, bool) {
     v, ok := <-s.ch
     if ok {
-        s.next++
+        s.count++
     }
     return v, ok
 }
 
+// `skip` discards all elements with absolute index smaller than `n` by reading
+// them from the input channel and dropping them.  It returns false if the
+// channel was closed before `n` was reached.
+func (s *input[A]) skip(n int) bool {
+    for s.count < n {
+        if _, ok := <-s.ch; !ok {
+            return false
+        }
+        s.count++
+    }
+    return true
+}
 
 // `label` holds the data stored at an interior tree node.  `aggregation` is an
 // option: some(v) for live nodes, none for discharged nodes whose aggregate has
@@ -260,7 +262,8 @@ func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window
         // Compute aggregation.
         if t, ok = slide(lop, s, t, w); !ok {
             // No more input elements.  Stop.
-            // Q: Should we return the elements that are in the incomplete window?
+            // QUESTION: Should we return the elements that are in the
+            // incomplete window or the partially aggregated value?
             return
         }
         // Send aggregated value.
