@@ -16,10 +16,13 @@ we will reimplement the sliding window algorithm described in the paper
 in several programming languages with the help of LLMs.  We try to
 provide implementations that are in the style of the corresponding
 programming language.  Understandable and clean code is the main
-target.  Performance is not top priority, but we not want end up with
-inefficient implementations.  Overall, we want code that uses the
-corresponding programming language well.  Finally, we draw some
-conclusions, where we focus on our use of LLMs for code generation.
+target.  The respective implementation should not heavily rely on
+third-party libraries.  Standard libraries, e.g., ones that are widely
+used are okay though.  Performance is not top priority, but we not
+want end up with inefficient implementations.  Overall, we want code
+that uses the corresponding programming language well.  Finally, we
+draw some conclusions, where we focus on our use of LLMs for code
+generation.
 
 We note that are not using any hard metric here for comparing the
 different implementations or the use of the LLMs.  Instead, we report

@@ -183,7 +183,8 @@ func news[A any](op Op[option[A]], s *input[A], n, i int, acc tree[A]) (tree[A],
 }
 
 // `reusables` folds every maximal subtree of `t` whose index range lies
-// entirely at or after `i` into `acc` via `combine`.
+// entirely at or after `i` into `acc` via `combine`.  The tail-recursive
+// implementation was replaced by an implementation with a for loop.
 func reusables[A any](op Op[option[A]], t tree[A], i int, acc tree[A]) tree[A] {
     for {
         if i > t.rightIndex() {
@@ -217,10 +218,7 @@ func slide[A any](op Op[option[A]], s *input[A], t tree[A], w Window) (tree[A], 
         return leaf[A](), false
     }
 
-    n := w.Right - i + 1
-    if i > w.Right {
-        n = 0
-    }
+    n := max(0, w.Right - i + 1)
 
     // Loop 1: Fold newly received elements directly into the result first that
     // were not contained in the previous window.
