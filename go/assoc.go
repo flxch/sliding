@@ -121,6 +121,28 @@ func (t tree[A]) extract() A {
 
 // Auxiliary tree functions.
 
+// `news` reads `n` new elements from `s` starting at absolute index `i`,
+// combines them into a tree right-to-left (so that the leftmost element ends up
+// deepest on the left spine), and folds the result into `acc`.  It returns the
+// updated accumulator and true, or acc unchanged and false if the channel was
+// closed before all elements were read.
+func news[A any](op Op[option[A]], s *input[A], n, i int, acc tree[A]) (tree[A], bool) {
+    if n == 0 {
+        return acc, true
+    }
+
+    // Read next element from the input channel.
+    v, ok := s.read()
+    if !ok {
+        // Input channel closed; signal termination.
+        return acc, false
+    }
+    if acc, ok = news(op, s, n - 1, i + 1, acc); !ok {
+        return acc, false
+    }
+    return combine(op, singleton(i, v), acc), true
+}
+
 // `reusables` folds every maximal subtree of `t` whose index range lies
 // entirely at or after `i` into `acc` via `combine`.
 func reusables[A any](op Op[option[A]], t tree[A], i int, acc tree[A]) tree[A] {
@@ -146,6 +168,109 @@ func reusables[A any](op Op[option[A]], t tree[A], i int, acc tree[A]) tree[A] {
 // `slide` advances the tree by one window step.  It returns the updated tree
 // and true on success, or the zero tree and false if the input channel was
 // closed before all required elements were available.
+func slide[A any](op Op[option[A]], s *input[A], t tree[A], w Window) (tree[A], bool) {
+    i := max(w.Left, 1 + t.rightIndex())
+
+    // Skip elements that lie after the previous windows and before the current
+    // window.  These elements have not yet been read from the input channel.
+    if !s.skip(i) {
+        // Input channel closed; signal termination.
+        return leaf[A](), false
+    }
+
+    n := w.Right - i + 1
+    if i > w.Right {
+        n = 0
+    }
+
+    // Loop 1: Fold newly received elements directly into the result first that
+    // were not contained in the previous window.
+    r, ok := news(op, s, n, i, leaf[A]())
+    if !ok {
+        // Input channel closed; signal termination.
+        return leaf[A](), false
+    }
+    // Loop 2: Fold the reusable subtrees from the previous window's tree.
+    return reusables(op, t, w.Left, r), true
+}
+
+
+// `AggregateAssoc` computes the aggregation of each window using `op`, which is
+// assumed to be an associative operator.
+// Arguments:
+// - in:   a channel delivering x_0, x_1, x_2, ... in order (may be infinite)
+// - out:  a channel on which results y_0, y_1, ... are sent, where
+//   y_i = x[l_i] op x[l_i+1] op ... op x[r_i].
+//   The caller is responsible for closing the channel.
+// - op:   an associative binary operator
+// - next: a function returning the next window and true, or (zero, false)
+//   when the window sequence is exhausted; windows must satisfy
+//   0 ≤ l_0 ≤ l_1 ≤ … and 0 ≤ r_0 ≤ r_1 ≤ ... and l_i ≤ r_i.
+// `AggregateAssoc` reads from `in` only as far as required by the windows seen
+// so far.
+func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window]) {
+    lop := lift(op)
+    s := newInput[A](in)
+    t := leaf[A]()
+
+    for {
+        // Get next window.
+        w, ok := next()
+        if !ok {
+            // No windows anymore.  Stop.
+            return
+        }
+        // Compute aggregation.
+        if t, ok = slide(lop, s, t, w); !ok {
+            // No more input elements.  Stop.
+            // Q: Should we return the elements that are in the incomplete window?
+            return
+        }
+        // Send aggregated value.
+        out <- t.extract()
+    }
+}
+
+
+// `input` tracks the position in the input channel, allowing elements to be
+// skipped or read one at a time.
+type input[A any] struct {
+    ch   <-chan A
+    next int // Absolute index of the next element to be read from the channel `ch`.
+}
+
+func newInput[A any](ch <-chan A) *input[A] {
+    return &input[A]{ch: ch}
+}
+
+// `skip` discards all elements with absolute index smaller than `n` by reading
+// them from the input channel and dropping them.  It returns false if the
+// channel was closed before `n` was reached.
+func (s *input[A]) skip(n int) bool {
+    for s.next < n {
+        if _, ok := <-s.ch; !ok {
+            return false
+        }
+        s.next++
+    }
+    return true
+}
+
+// `read` reads the next element from the input channel, advancing the position.
+// It returns the element and true on success, or the zero value and false if
+// the channel was closed.
+func (s *input[A]) read() (A, bool) {
+    v, ok := <-s.ch
+    if ok {
+        s.next++
+    }
+    return v, ok
+}
+
+
+// -----------------------------------------------------------------------------
+// Old code
+/*
 func slide[A any](op Op[option[A]],	b *buffer[A], t tree[A], w Window) (tree[A], bool) {
     m := max(w.Left, 1 + t.rightIndex())
 
@@ -155,8 +280,6 @@ func slide[A any](op Op[option[A]],	b *buffer[A], t tree[A], w Window) (tree[A],
     }
     if !b.fill(w.Right) {
         // Input channel closed; signal termination.
-        // TODO: Could immediately build the singleton and combine it with r,
-        // instead of buffering the elements.
         return leaf[A](), false
     }
 
@@ -176,43 +299,6 @@ func slide[A any](op Op[option[A]],	b *buffer[A], t tree[A], w Window) (tree[A],
     r = reusables(op, t, w.Left, r)
 
     return r, true
-}
-
-
-// `AggregateAssoc` computes the aggregation of each window using `op`, which is
-// assumed to be an associative operator.
-// Arguments:
-// - in:   a channel delivering x_0, x_1, x_2, ... in order (may be infinite)
-// - out:  a channel on which results y_0, y_1, ... are sent, where
-//   y_i = x[l_i] op x[l_i+1] op ... op x[r_i].
-//   The caller is responsible for closing the channel.
-// - op:   an associative binary operator
-// - next: a function returning the next window and true, or (zero, false)
-//   when the window sequence is exhausted; windows must satisfy
-//   0 ≤ l_0 ≤ l_1 ≤ … and 0 ≤ r_0 ≤ r_1 ≤ ... and l_i ≤ r_i.
-// `AggregateAssoc` reads from `in` only as far as required by the windows seen
-// so far.
-func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window]) {
-    lop := lift(op)
-    b := newBuffer[A](in)
-    t := leaf[A]()
-
-    for {
-        // Get next window.
-        w, ok := next()
-        if !ok {
-            // No windows anymore.  Stop.
-            return
-        }
-        // Compute aggregation.
-        if t, ok = slide(lop, b, t, w); !ok {
-            // No more input elements.  Stop.
-            // Q: Should we return the elements that are in the incomplete window?
-            return
-        }
-        // Send aggregated value.
-        out <- t.extract()
-    }
 }
 
 
@@ -279,3 +365,7 @@ func (b *buffer[A]) fill(n int) bool {
     }
     return true
 }
+*/
+
+
+
