@@ -55,10 +55,12 @@ type tree[A any] struct {
 
 // Tree constructors.
 
+// `leaf` returns the empty aggregation.
 func leaf[A any]() tree[A] {
     return tree[A]{}
 }
 
+// `singelton` returns the aggregated value `x` at index `i`.
 func singleton[A any](i int, x A) tree[A] {
     return tree[A]{
         data: some(label[A]{from: i, to: i, aggregation: some(x)}),
@@ -91,6 +93,7 @@ func combine[A any](op Op[option[A]], t1, t2 tree[A]) tree[A] {
 }
 
 // `discharge` returns `t` with its aggregation cleared to none.
+// (Helper function in `combine`.)
 func (t *tree[A]) discharge() {
     t.data.value.aggregation = none[A]()
 }
@@ -266,4 +269,3 @@ func (s *input[A]) read() (A, bool) {
     }
     return v, ok
 }
-
