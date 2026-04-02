@@ -2,7 +2,7 @@ package sliding
 
 
 // TODO: Use extra package `container/maybe` with the Option[A] type.
-// -----------------------------------------------------------------------------
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 // `option[A]` represents an optional value: ok == true means value holds a
 // valid A; ok == false means no value is present.
 type option[A any] struct {
@@ -32,7 +32,43 @@ func lift[A any](op Op[A]) Op[option[A]] {
         return some(op(x.value, y.value))
     }
 }
-// -----------------------------------------------------------------------------
+// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+// `input` tracks the position of an input channel, allowing elements to be
+// skipped or read one at a time.
+type input[A any] struct {
+    ch   <-chan A
+    next int // Absolute index of the next element to be read from the channel `ch`.
+}
+
+func newInput[A any](ch <-chan A) *input[A] {
+    return &input[A]{ch: ch}
+}
+
+// `skip` discards all elements with absolute index smaller than `n` by reading
+// them from the input channel and dropping them.  It returns false if the
+// channel was closed before `n` was reached.
+func (s *input[A]) skip(n int) bool {
+    for s.next < n {
+        if _, ok := <-s.ch; !ok {
+            return false
+        }
+        s.next++
+    }
+    return true
+}
+
+// `read` reads the next element from the input channel, advancing the position.
+// It returns the element and true on success, or the zero value and false if
+// the channel was closed.
+func (s *input[A]) read() (A, bool) {
+    v, ok := <-s.ch
+    if ok {
+        s.next++
+    }
+    return v, ok
+}
+
 
 // `label` holds the data stored at an interior tree node.  `aggregation` is an
 // option: some(v) for live nodes, none for discharged nodes whose aggregate has
@@ -51,7 +87,6 @@ type tree[A any] struct {
     left  *tree[A]         // left child
     right *tree[A]         // right child
 }
-
 
 // Tree constructors.
 
@@ -97,7 +132,6 @@ func combine[A any](op Op[option[A]], t1, t2 tree[A]) tree[A] {
 func (t *tree[A]) discharge() {
     t.data.value.aggregation = none[A]()
 }
-
 
 // Tree selectors.
 
@@ -198,19 +232,19 @@ func slide[A any](op Op[option[A]], s *input[A], t tree[A], w Window) (tree[A], 
 }
 
 
-// `AggregateAssoc` computes the aggregation of each window using `op`, which is
-// assumed to be an associative operator.
+// `AggregateAssoc` computes the aggregations of each window for an associative
+// operator.
 // Arguments:
 // - in:   a channel delivering x_0, x_1, x_2, ... in order (may be infinite)
+//   `AggregateAssoc` reads the elements from `in` only as far as required by
+//    the windows seen so far.
 // - out:  a channel on which results y_0, y_1, ... are sent, where
 //   y_i = x[l_i] op x[l_i+1] op ... op x[r_i].
-//   The caller is responsible for closing the channel.
+//   Note that the caller/creator is responsible for closing the channel.
 // - op:   an associative binary operator
 // - next: a function returning the next window and true, or (zero, false)
 //   when the window sequence is exhausted; windows must satisfy
-//   0 ≤ l_0 ≤ l_1 ≤ … and 0 ≤ r_0 ≤ r_1 ≤ ... and l_i ≤ r_i.
-// `AggregateAssoc` reads from `in` only as far as required by the windows seen
-// so far.
+//   0 <= l_0 <= l_1 <= ... and 0 <= r_0 <= r_1 <= ... and l_i <= r_i.
 func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window]) {
     lop := lift(op)
     s := newInput[A](in)
@@ -232,40 +266,4 @@ func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window
         // Send aggregated value.
         out <- t.extract()
     }
-}
-
-
-// `input` tracks the position in the input channel, allowing elements to be
-// skipped or read one at a time.
-type input[A any] struct {
-    ch   <-chan A
-    next int // Absolute index of the next element to be read from the channel `ch`.
-}
-
-func newInput[A any](ch <-chan A) *input[A] {
-    return &input[A]{ch: ch}
-}
-
-// `skip` discards all elements with absolute index smaller than `n` by reading
-// them from the input channel and dropping them.  It returns false if the
-// channel was closed before `n` was reached.
-func (s *input[A]) skip(n int) bool {
-    for s.next < n {
-        if _, ok := <-s.ch; !ok {
-            return false
-        }
-        s.next++
-    }
-    return true
-}
-
-// `read` reads the next element from the input channel, advancing the position.
-// It returns the element and true on success, or the zero value and false if
-// the channel was closed.
-func (s *input[A]) read() (A, bool) {
-    v, ok := <-s.ch
-    if ok {
-        s.next++
-    }
-    return v, ok
 }
