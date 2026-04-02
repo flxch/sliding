@@ -35,6 +35,20 @@ var aggregationAssocTestcases []testcase = []testcase{
         op:       func(s, t int) int { return s + t },
         elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
         windows:  []sliding.Window{
+            sliding.Window{0,2},
+            sliding.Window{1,3},
+            sliding.Window{2,4},
+            sliding.Window{3,5},
+            sliding.Window{4,6},
+            sliding.Window{5,7},
+            sliding.Window{6,8},
+            sliding.Window{7,9}},
+        expected: []int{3, 6, 9, 12, 15, 18, 21, 24},
+    },
+    testcase{
+        op:       func(s, t int) int { return s + t },
+        elems:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+        windows:  []sliding.Window{
             sliding.Window{0,1},
             sliding.Window{4,6}},
         expected: []int{1, 15},
