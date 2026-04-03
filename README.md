@@ -62,8 +62,41 @@ programming languages.
 
 ### Problem Description
 
+Let `⊕:D×D→D` be an associative operator over some domain `D`.
+Consider a sequence `ā = (a_1, ... , a_n)` of elements in `D`, with `n
+≥ 1`. A _window_ `w` in `ā` is a pair `(l,r)` with `1 ≤ l ≤ r ≤ n`.
+We denote the _left margin_ of a window `w` by `left(w)` and the
+_right margin_ by `right(w)` , i.e., `left(w)` is `w`’s first
+component and `right(w)` its second component.  Furthermore, we write
+`⊕w(ā)` for `a_left(w) ⊕ a_left(w)+1 ⊕ ... ⊕ a_right(w)`, i.e., the
+aggregated value of the elements of the window `w`.
+
+We consider the following problem in which the number of applications
+of the `⊕` operator should be minimized.
+
+- *Input:* A nonempty sequence `ā` of elements in `D` and a sequence
+   `w̄ = (w_1, ..., w_k)` of windows in `ā`, with `left(w_1) ≤
+   left(w_2) ≤ ... ≤ left(w_k)` and `right(w_1) ≤ right(w_2) ≤ ... ≤
+   right(w_k)`.
+- *Output:* The sequence `⊕w_1(ā), ⊕w_2(ā), ... , ⊕w_k(ā)`.
+
+We further require that the sequences `ā` and `w̄` are given
+incrementally.  There lengths are not known in advance, i.e., they are
+potentially unbounded.
+
+The objective of minimizing the applications of `⊕` is motivated in
+settings where `⊕`’s computation is expensive, e.g., when taking the
+union of large finite sets or when multiplying large matrices.
+
+The straightforward but suboptimal algorithm to the problem computes
+`⊕w_i(ā)` for each window `w_i` separately.  It is easy to see that
+this algorithm applies the `⊕` operator `SUM_i=1^k (right(w_i) −
+left(w_i))` times. One can do better by sharing intermediate results
+between overlapping windows.
+
 ### Algorithmic Details
 
+[TODO]
 
 ## Implementations
 
@@ -106,13 +139,6 @@ Claude generated for me based on my instructions.
 ### TypeScript
 
 ### Dafny
-
-[TODO: We should start here from the Ocaml implementation and the
-paper's paper-and-pencil proof to obtain a Dafny implementation.  LLMs
-should help to annotate the code with assertions, invariants, and pre-
-and post-conditions.  It would then be interesting how useful the
-Dafny code is to obtain implementation in other programming
-languages.]
 
 
 # References
