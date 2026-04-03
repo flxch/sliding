@@ -21,29 +21,32 @@ including a correctness proof is provided in the paper.  It is also
 not a standard algorithm for which many implementations already exists
 and which have been used in the training phase of the LLMs.
 
-In this project, we try to provide implementations of the sliding
-window algorithm that are in the style of the corresponding
-programming language.  Understandable and clean code is the main
-target.  The respective implementation should not heavily rely on
-third-party libraries.  Standard libraries, e.g., ones that are widely
-used are okay though.  Performance is not top priority, but we not
-want end up with inefficient implementations.  Overall, we want code
-that uses the corresponding programming language well and its coding
-styles.  Finally, we draw some conclusions, where we focus on our use
-of LLMs for code generation.
+This project provides implementations of the sliding window algorithm
+that are in the style of the corresponding programming language.
+Understandable and clean code is the main target.  The respective
+implementation should not heavily rely on third-party libraries.
+Standard libraries, e.g., ones that are widely used are okay though.
+Performance is not top priority, but we not want end up with
+inefficient implementations.  Overall, we want code that uses the
+corresponding programming language well and its coding styles.  The
+implementation should be close to the Ocaml implementation provided in
+the paper.  However, it is perfectly fine to deviate from the Ocaml
+code to use features of the respective programming language.  The
+algorithms core should stay the same though.  Finally, we draw some
+conclusions, where we focus on our use of LLMs for code generation.
 
-We note that are not using any hard metric here for comparing the
-different implementations or analyzing the use of the LLMs.  Instead,
-we report on our impression and the lessons learned while writing the
-code.  You should keep in mind that this is subjective and debatable.
-My statements should also be taken with some grain of salt.
-Nevertheless, I hope they provide some insights and intuition.
-Furthermore, because the current development on LLMs with their
-improvements is amazingly fast, some of the statements that you find
-here might become quickly outdated.  I will not be able to guarantee
-that everything is up to date.  Currently, I am using Claude Sonnet
-4.6.  I might later use other LLMs to make some comparison for their
-coding support.
+Note that no hard metrics are used here for comparing the different
+implementations or analyzing the use of the LLMs.  Instead, we report
+on our impression and the lessons learned while writing the code.  You
+should keep in mind that this is subjective and debatable.  My
+statements should also be taken with some grain of salt.
+Nevertheless, I hope this project provides some insights and
+intuition.  Furthermore, because the current development on LLMs with
+their improvements is amazingly fast, some of the statements that you
+find here might become quickly outdated.  I will not be able to
+guarantee that everything is up to date.  Currently, I am using Claude
+Sonnet 4.6.  I might later use other LLMs to make some comparison for
+their coding support.
 
 Your feedback such as suggestions for improvements or different
 implementations, including implementations in a programming language
@@ -117,9 +120,23 @@ languages.]
 1. D. Basin, F. Klaedtke, and E. Zălinescu.
    Greedily Computing Associative Aggregations on Sliding Windows.
    Information Processing Letters, 115(2):186-192, 2015.
-   
-2. D. Basin, M. Harvan, F. Klaedtke, and E. Zălinescu.  MONPOLY:
-   Monitoring Usage-Control Policies.
+
+2. D. Basin, M. Harvan, F. Klaedtke, and E. Zălinescu.
+   MONPOLY: Monitoring Usage-Control Policies.
    In the Proceedings of the 2nd International Conference on Runtime
-   Verification (RV). Lecture Notes in Computer Science, vol 7186.
-   Springer, 2011
+   Verification (RV). Lecture Notes in Computer Science, vol. 7186.
+   Springer, 2011.
+
+
+# TODOs
+
+* Review implementations in Rust and Dafny.  Some changes might be
+  necessary here.
+
+* Provide implementations in C and TypeScript.
+
+* Use LLMs to obtain an implementation in a programming language of
+  your choice by describing the algorithm and its core building blocks
+  in natural language only.  Do not provide an implementation in some
+  other programming language.  You may want to use pseudo code
+  snippets.
