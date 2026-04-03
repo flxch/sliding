@@ -98,7 +98,9 @@ between overlapping windows.
 [TODO: Provide intuition and describe core ideas: sliding window and
 reusing partial aggregations of subsequences in previous processed
 windows.  These partial aggregations are stored in trees that are
-updated whenever moving the window to the right.]
+updated whenever moving the window to the right.  Intuition is best
+provided through a picture illustrating the sliding window over the
+stream elements.]
 
 
 ## Implementations
@@ -167,5 +169,7 @@ Claude generated for me based on my instructions.
 * Use LLMs to obtain an implementation in a programming language of
   your choice by describing the algorithm and its core building blocks
   in natural language only.  Do not provide an implementation in some
-  other programming language.  You may want to use pseudo code
-  snippets.
+  other programming language to the LLM.  You may want to use pseudo
+  code snippets though.  You may want to use the problem description
+  and the description of the algorithmic details from above in your
+  prompt.
