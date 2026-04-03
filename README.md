@@ -80,15 +80,14 @@ of the `⊕` operator should be minimized.
    right(w_k)`.
 - *Output:* The sequence `⊕w_1(ā), ⊕w_2(ā), ... , ⊕w_k(ā)`.
 
-We further require that the sequences `ā` and `w̄` are given
-incrementally.  There lengths are not known in advance, i.e., they are
+We further require that both the sequences `ā` and `w̄` are given
+incrementally.  Their lengths are not known in advance, i.e., they are
 potentially unbounded.
 
 The objective of minimizing the applications of `⊕` is motivated in
 settings where `⊕`’s computation is expensive, e.g., when taking the
-union of large finite sets or when multiplying large matrices.
-
-The straightforward but suboptimal algorithm to the problem computes
+union of large finite sets or when multiplying large matrices.  The
+straightforward but suboptimal algorithm to the problem computes
 `⊕w_i(ā)` for each window `w_i` separately.  It is easy to see that
 this algorithm applies the `⊕` operator `SUM_i=1^k (right(w_i) −
 left(w_i))` times. One can do better by sharing intermediate results
@@ -96,7 +95,11 @@ between overlapping windows.
 
 ### Algorithmic Details
 
-[TODO]
+[TODO: Provide intuition and describe core ideas: sliding window and
+reusing partial aggregations of subsequences in previous processed
+windows.  These partial aggregations are stored in trees that are
+updated whenever moving the window to the right.]
+
 
 ## Implementations
 
