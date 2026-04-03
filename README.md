@@ -79,9 +79,10 @@ of the `⊕` operator should be minimized.
    `w̄ = (w_1, ..., w_k)` of windows in `ā`, with `left(w_1) ≤
    left(w_2) ≤ ... ≤ left(w_k)` and `right(w_1) ≤ right(w_2) ≤ ... ≤
    right(w_k)`.
-- *Output:* The sequence `⊕w_1(ā), ⊕w_2(ā), ... , ⊕w_k(ā)`.
+- *Output:* The sequence `⊕w_1(ā), ⊕w_2(ā), ... , ⊕w_k(ā)` of
+  aggregated values.
 
-We further require that both the sequences `ā` and `w̄` are given
+We further require that both sequences `ā` and `w̄` are given
 incrementally.  Their lengths are not known in advance, i.e., they are
 potentially unbounded.
 
@@ -134,23 +135,46 @@ Haskell implementations, which I also provided to Claude in the
 initial prompt.
 
 It took several iterations until I was happy with the code that Claude
-generated for me based on my instructions.  First, some bugs had to be
-fixed.  Then, instead of relying on slices for represning the data
-stream and the elements, I mandated an input channel for receiving the
-elements of the data stream incrementaly and a function that provides
-the next window.  With slices the problem was over simplified.
-Afterwards, the instructions were on performance, in particular, on
-improving the memory management.  The generated code created slices
-for storing intermediate results.  This book keeping was unnecessary.
-Some instructions targeted specific functions and requested their
-rewrite for performance reasons.  For instance the tail recursive
-function `reusables` was rewritten using a for loop.  It took some
-effort to rewrite and optimize the code.  Finally, instructions were
-necessary to make the code cleaner and respect the "Go style".
+generated for me.  First, some bugs had to be fixed.  Here, I gave
+counterexamples the demonstrated the error.  The bugs were fixed.
+Afterwards, I formulated an instruction in each instruction about what
+should be changed and why the current code is problematic.
 
-Overall, it is worth to remark that spotting the shortcommings and
-phrasing the instructions, a good understaning of the algorithm and
-the code was necessary.
+* The first change was addressing the probem on relying on slices for
+  epresenting the data stream and the elements.  This does not work
+  well with receiving the stream elements incrementally.  I mandated
+  an input channel for receiving the elements.  I also mandated a
+  function that provides the next window.  With slices the problem was
+  over simplified.
+
+* The second change was addressing performance issues, in particular,
+  on improving the memory management.  The generated code created slices
+  for storing intermediate results.  This bookkeeping was unnecessary.
+
+* The third change targeted specific functions and requested their
+  rewrite for performance reasons.  For instance the tail recursive
+  function `reusables` was rewritten using a for loop.  It took some
+  effort to rewrite and optimize the code.
+
+* The fourth change was addressing coding style in general and Go
+  specific.  For example, `nil` was used for no value.  Furthermore,
+  pointers must be used to point to actual values.  Introducing an
+  option type that either holds some value or none is better coding
+  style.  The option type corresponds to the data type `Maybe a` in
+  Haskell.  All of these changes were rather small but there were many
+  of them.
+
+* The fifth change was addressing overly complex code.  Simpler code
+  already does the work.  The instructions explained the problem and
+  briefly described what should be changed.
+
+Overall, spotting the shortcommings and phrasing the instructions, a
+good understaning of the algorithm and the code was necessary.  It is
+also worth mentioning that many iterations were necessary because many
+things needed to be changed.  Although the code was functional correct
+after fixing the bugs, the quality of the generated code was not
+great.  Performance, understandability, succinctness, and style had to
+be improved.
 
 
 ### Python
@@ -166,9 +190,9 @@ the code was necessary.
 
 # References
 
-1. D. Basin, F. Klaedtke, and E. Zălinescu.
-   Greedily Computing Associative Aggregations on Sliding Windows.
-   Information Processing Letters, 115(2):186-192, 2015.
+1. D. Basin, F. Klaedtke, and E. Zălinescu.  Greedily Computing
+   Associative Aggregations on Sliding Windows.  Information
+   Processing Letters, 115(2):186-192, 2015.
 
 2. D. Basin, M. Harvan, F. Klaedtke, and E. Zălinescu.
    MONPOLY: Monitoring Usage-Control Policies.
