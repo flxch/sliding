@@ -218,11 +218,9 @@ func slide[A any](op Op[option[A]], s *input[A], t tree[A], w Window) (tree[A], 
         return leaf[A](), false
     }
 
-    n := max(0, w.Right - i + 1)
-
     // Loop 1: Fold newly received elements directly into the result first that
     // were not contained in the previous window.
-    r, ok := news(op, s, n, i, leaf[A]())
+    r, ok := news(op, s, max(0, w.Right - i + 1), i, leaf[A]())
     if !ok {
         // Input channel closed; signal termination.
         return leaf[A](), false

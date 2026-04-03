@@ -1,7 +1,8 @@
 """
 Sliding window aggregation algorithm.
 
-Python design note:
+Python design notes
+-------------------
 The Go implementation uses channels for the input stream.  In Python the
 natural equivalent is an *iterator* (or generator): it is lazy, works for
 infinite sequences, and requires no threads or queues.  The internal stream
@@ -9,17 +10,27 @@ helper below wraps any iterator and adds the same two primitives that the Go
 `input` struct exposes:
   - read()  – advance and return the next element
   - skip(n) – discard elements until the absolute position reaches n
+
+Both methods raise _StreamExhausted if the underlying iterator is exhausted.
+This is a dedicated exception rather than StopIteration so that stream
+exhaustion is never confused with the StopIteration that Python uses
+internally to drive for-loops and generators (see PEP 479).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Generic, Iterator, Optional, Tuple, TypeVar
 
 A = TypeVar("A")
 Op = Callable[[A, A], A]
 Window = Tuple[int, int]  # (left_index, right_index), both inclusive
 
+
+# Stream exhaustion exception
+
+class _StreamExhausted(Exception):
+    """Raised when the input stream is exhausted before a window is complete."""
 
 # Internal stream wrapper
 
@@ -30,65 +41,25 @@ class _Stream(Generic[A]):
         self._it = it
         self.count: int = 0  # number of elements already consumed
 
-    def read(self) -> Tuple[Optional[A], bool]:
-        """Return (value, True) or (None, False) if the iterator is exhausted."""
+    def read(self) -> A:
+        """Return the next element, advancing the position.
+        Raises _StreamExhausted if the stream is exhausted."""
         try:
             v = next(self._it)
-            self.count += 1
-            return v, True
         except StopIteration:
-            return None, False
+            raise _StreamExhausted("input stream exhausted while reading element")
+        self.count += 1
+        return v
 
-    def skip(self, n: int) -> bool:
-        """Discard elements until self.count == n.  Return False if exhausted."""
+    def skip(self, n: int) -> None:
+        """Discard elements until self.count == n.
+        Raises _StreamExhausted if the stream is exhausted before reaching n."""
         while self.count < n:
             try:
                 next(self._it)
-                self.count += 1
             except StopIteration:
-                return False
-        return True
-
-
-# Option type
-
-@dataclass
-class _Option(Generic[A]):
-    """A minimal option/maybe type to mirror the Go implementation."""
-    _value: Optional[A] = field(default=None, repr=False)
-    _ok: bool = field(default=False, repr=False)
-
-    def is_some(self) -> bool:
-        return self._ok
-
-    def is_none(self) -> bool:
-        return not self._ok
-
-    @property
-    def value(self) -> A:
-        if not self._ok:
-            raise ValueError("Option is None")
-        return self._value  # type: ignore[return-value]
-
-
-def _some(v: A) -> _Option[A]:
-    o: _Option[A] = _Option()
-    o._value = v
-    o._ok = True
-    return o
-
-
-def _none() -> _Option:
-    return _Option()
-
-
-def _lift(op: Op[A]) -> Op[_Option[A]]:
-    """Lift an operator to work on _Option values."""
-    def lifted(x: _Option[A], y: _Option[A]) -> _Option[A]:
-        if x.is_none() or y.is_none():
-            return _none()
-        return _some(op(x.value, y.value))
-    return lifted
+                raise _StreamExhausted("input stream exhausted while skipping elements")
+            self.count += 1
 
 
 # Tree
@@ -97,8 +68,7 @@ def _lift(op: Op[A]) -> Op[_Option[A]]:
 class _Label(Generic[A]):
     from_idx: int
     to_idx:   int
-    agg:      _Option[A]   # some(v) for live nodes, none for discharged
-
+    agg:      Optional[A]  # not None for live nodes, None for discharged nodes
 
 class _Tree(Generic[A]):
     """
@@ -126,14 +96,14 @@ class _Tree(Generic[A]):
         return -1 if self.data is None else self.data.to_idx
 
     def extract(self) -> A:
-        if self.data is None or self.data.agg.is_none():
+        if self.data is None or self.data.agg is None:
             raise ValueError("No aggregated value at tree's root")
-        return self.data.agg.value
+        return self.data.agg
 
     def discharge(self) -> None:
         """Clear the aggregation of this node in-place."""
         if self.data is not None:
-            self.data.agg = _none()
+            self.data.agg = None
 
 # -- tree constructors -------------------------------------------------------
 
@@ -141,9 +111,17 @@ def _leaf() -> _Tree:
     return _Tree()
 
 def _singleton(i: int, x: A) -> _Tree[A]:
-    return _Tree(data=_Label(from_idx=i, to_idx=i, agg=_some(x)))
+    return _Tree(data=_Label(from_idx=i, to_idx=i, agg=x))
 
-def _combine(op: Op[_Option[A]], t1: _Tree[A], t2: _Tree[A]) -> _Tree[A]:
+def _lift(op: Op[A]) -> Op[Optional[A]]:
+    """Lift an operator to work on Optional values."""
+    def lifted(x: Optional[A], y: Optional[A]) -> Optional[A]:
+        if x is None or y is None:
+            return None
+        return op(x, y)
+    return lifted
+
+def _combine(op: Op[Optional[A]], t1: _Tree[A], t2: _Tree[A]) -> _Tree[A]:
     """
     Merge two trees.  t1 is discharged and becomes the left child; t2 becomes
     the right child.  If either tree is a leaf, return the other unchanged.
@@ -160,30 +138,23 @@ def _combine(op: Op[_Option[A]], t1: _Tree[A], t2: _Tree[A]) -> _Tree[A]:
         right = t2,
     )
 
-
 # Core algorithm helpers
 
-def _news(op:  Op[_Option[A]], s: _Stream[A], n: int, i: int, acc: _Tree[A]) -> Tuple[_Tree[A], bool]:
+def _news(op: Op[Optional[A]], s: _Stream[A], n: int, i: int, acc: _Tree[A]) -> _Tree[A]:
     """
     Read ``n`` new elements from ``s`` starting at absolute index ``i``,
     build singleton trees, and fold them (right-to-left) into ``acc``.
-    Returns (updated_acc, True) or (acc, False) if the stream is exhausted.
+    Raises _StreamExhausted if the stream is exhausted before all n elements
+    are read.
     """
     if n == 0:
-        return acc, True
-
-    v, ok = s.read()
-    if not ok:
-        return acc, False
-
-    acc, ok = _news(op, s, n - 1, i + 1, acc)
-    if not ok:
-        return acc, False
-
-    return _combine(op, _singleton(i, v), acc), True
+        return acc
+    v   = s.read()
+    acc = _news(op, s, n - 1, i + 1, acc)
+    return _combine(op, _singleton(i, v), acc)
 
 
-def _reusables(op: Op[_Option[A]], t: _Tree[A], i: int, acc: _Tree[A]) -> _Tree[A]:
+def _reusables(op: Op[Optional[A]], t: _Tree[A], i: int, acc: _Tree[A]) -> _Tree[A]:
     """
     Fold every maximal subtree of ``t`` whose index range is entirely >= ``i``
     into ``acc`` via ``combine``.  Iterative to avoid Python recursion limits.
@@ -197,33 +168,28 @@ def _reusables(op: Op[_Option[A]], t: _Tree[A], i: int, acc: _Tree[A]) -> _Tree[
         r_child = t.right  # type: ignore[assignment]
         l_child = t.left   # type: ignore[assignment]
         if i >= r_child.left_index():  # type: ignore[union-attr]
-            t = r_child  # tail-recurse into right subtree
+            t = r_child   # tail-recurse into right subtree
         else:
             acc = _combine(op, r_child, acc)
-            t = l_child  # tail-recurse into left subtree
+            t   = l_child  # tail-recurse into left subtree
 
-
-def _slide(op: Op[_Option[A]], s: _Stream[A], t: _Tree[A], w: Window) -> Tuple[_Tree[A], bool]:
+def _slide(op: Op[Optional[A]], s: _Stream[A], t: _Tree[A], w: Window) -> _Tree[A]:
     """
     Advance the tree by one window step ``w = (left, right)``.
-    Returns (updated_tree, True) or (leaf, False) if the stream was exhausted.
+    Raises _StreamExhausted if the stream is exhausted before all required
+    elements are available.
     """
     left, right = w
     i = max(left, 1 + t.right_index())
 
     # Skip elements that fall between the previous window and the current one.
-    if not s.skip(i):
-        return _leaf(), False
-
-    n = max(0, right - i + 1)
+    s.skip(i)
 
     # Fold newly read elements into a fresh subtree.
-    r, ok = _news(op, s, n, i, _leaf())
-    if not ok:
-        return _leaf(), False
+    r = _news(op, s, max(0, right - i + 1), i, _leaf())
 
     # Fold reusable subtrees from the previous window.
-    return _reusables(op, t, left, r), True
+    return _reusables(op, t, left, r)
 
 
 # Public API
@@ -256,7 +222,8 @@ def sliding_window(op: Op[A], xs: Iterator[A], windows: Iterator[Window]) -> Ite
     t   = _leaf()
 
     for w in windows:
-        t, ok = _slide(lop, s, t, w)
-        if not ok:
-            return  # input stream exhausted
+        try:
+            t = _slide(lop, s, t, w)
+        except _StreamExhausted:
+            return  # input stream exhausted before window was complete
         yield t.extract()
