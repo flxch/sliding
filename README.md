@@ -68,8 +68,8 @@ programming languages.
 
 The first implementation of the sliding window algorithm was in
 Ocaml. It is based on a subalgorithm within the monitoring tool
-MONPOLY, which is written in Ocaml. [TODO: provide link to MONPOLY]
-The paper presents (more or less) the Ocaml implementation.
+[MONPOLY](https://sourceforge.net/projects/monpoly/), which is written
+in Ocaml.  The paper presents (more or less) the Ocaml implementation.
 
 ### Haskell
 
@@ -103,3 +103,23 @@ Claude generated for me based on my instructions.
 ### TypeScript
 
 ### Dafny
+
+[TODO: We should start here from the Ocaml implementation and the
+paper's paper-and-pencil proof to obtain a Dafny implementation.  LLMs
+should help to annotate the code with assertions, invariants, and pre-
+and post-conditions.  It would then be interesting how useful the
+Dafny code is to obtain implementation in other programming
+languages.]
+
+
+# References
+
+1. D. Basin, F. Klaedtke, and E. Zălinescu.
+   Greedily Computing Associative Aggregations on Sliding Windows.
+   Information Processing Letters, 115(2):186-192, 2015.
+   
+2. D. Basin, M. Harvan, F. Klaedtke, and E. Zălinescu.  MONPOLY:
+   Monitoring Usage-Control Policies.
+   In the Proceedings of the 2nd International Conference on Runtime
+   Verification (RV). Lecture Notes in Computer Science, vol 7186.
+   Springer, 2011
