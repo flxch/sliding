@@ -8,7 +8,7 @@ experience the strengths and weaknesses of LLMs for coding, and learn
 some lessons here.  To this end, I will reimplement the sliding
 window algorithm described in the paper
 
-> D. Basin, F. Klaedtke, and E. Zalinescu.
+> D. Basin, F. Klaedtke, and Ed. Zălinescu.
 > Greedily Computing Associative Aggregations on Sliding Windows.
 > Information Processing Letters, 115(2):186-192, 2015.
 > [publisher](https://www.sciencedirect.com/science/article/pii/S0020019014001859)
@@ -20,8 +20,7 @@ sliding window algorithm is a good choice for the goals.  It is not
 too complex but not trivial.  Furthermore, a precise description
 including a correctness proof is provided in the above paper.  It is
 also not a standard algorithm for which many implementations already
-exist and whichmay have been used in the training phase of LLMs.
-
+exist and which may have been used in the training phase of LLMs.
 
 For each implementation of the sliding window algorithm, the style of
 the respective programming language should be respected.
@@ -132,10 +131,27 @@ Go is currently my major programming language.  This is the reason why
 I started with implementing the sliding window algorithm in Go with
 the support of LLMs.  As a starting point, I used the Ocaml and
 Haskell implementations, which I also provided to Claude in the
-prompt.
+initial prompt.
 
-It took several iterations until I was happy with the code that
-Claude generated for me based on my instructions.
+It took several iterations until I was happy with the code that Claude
+generated for me based on my instructions.  First, some bugs had to be
+fixed.  Then, instead of relying on slices for represning the data
+stream and the elements, I mandated an input channel for receiving the
+elements of the data stream incrementaly and a function that provides
+the next window.  With slices the problem was over simplified.
+Afterwards, the instructions were on performance, in particular, on
+improving the memory management.  The generated code created slices
+for storing intermediate results.  This book keeping was unnecessary.
+Some instructions targeted specific functions and requested their
+rewrite for performance reasons.  For instance the tail recursive
+function `reusables` was rewritten using a for loop.  It took some
+effort to rewrite and optimize the code.  Finally, instructions were
+necessary to make the code cleaner and respect the "Go style".
+
+Overall, it is worth to remark that spotting the shortcommings and
+phrasing the instructions, a good understaning of the algorithm and
+the code was necessary.
+
 
 ### Python
 
@@ -172,9 +188,9 @@ Claude generated for me based on my instructions.
 
 * Only provide the Haskell implementation to the LLMs for code
   generation in another programming language.  Currently, we rely
-  mainly on the Go implemenation, which was obtained from the Haskell
+  mainly on the Go implementation, which was obtained from the Haskell
   implementation in a first step.  The first step was hard but after
-  that the other implementation were obtained fairly efforless.  Only
+  that the other implementation were obtained fairly effortless.  Only
   a few interactions with the LLM were necessary.
 
 * Use LLMs to obtain an implementation in a programming language of
