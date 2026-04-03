@@ -166,6 +166,15 @@ Claude generated for me based on my instructions.
 
 * Provide implementations in C and TypeScript.
 
+* Provide interactions with the LLMs for code generation.
+
+* Only provide the Haskell implementation to the LLMs for code
+  generation in another programming language.  Currently, we rely
+  mainly on the Go implemenation, which was obtained from the Haskell
+  implementation in a first step.  The first step was hard but after
+  that the other implementation were obtained fairly efforless.  Only
+  a few interactions with the LLM were necessary.
+
 * Use LLMs to obtain an implementation in a programming language of
   your choice by describing the algorithm and its core building blocks
   in natural language only.  Do not provide an implementation in some
