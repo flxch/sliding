@@ -40,14 +40,14 @@ func lift[A any](op Op[A]) Op[option[A]] {
 type label[A any] struct {
     from        int       // left index
     to          int       // right index
-    aggregation option[A] // aggregated value; maybe none
+    aggregation option[A] // aggregated value [from..to]; maybe none
 }
 
 // `tree` represents a binary tree that is either a leaf or an interior node.
 // The ok field of the embedded option[label[A]] plays the role of the
 // leaf/non-leaf flag: isNone means this is a leaf.
 type tree[A any] struct {
-    data  label[A] // aggregated value from to; maybe none
+    data  label[A] // aggregated value
     left  *tree[A] // left child
     right *tree[A] // right child
 }
@@ -61,6 +61,12 @@ func leaf[A any]() tree[A] {
 
 // `singelton` returns the aggregated value `x` at index `i`.
 func singleton[A any](i int, x A) tree[A] {
+    // Note that we need a pointer here for the left and right child of the
+    // leaf.  nil does not work since the check `t.left == nil` in the selectors
+    // below.  We could use the same leave for all trees.  However, since tree
+    // nodes are parametric on the type A, we cannot do this by a global
+    // variable.  Another representation of leaves as singletons seems to be
+    // tricky Hence, we create a leave for each singleton.
     l := leaf[A]()
     return tree[A]{
         data:  label[A]{from: i, to: i, aggregation: some(x)},
