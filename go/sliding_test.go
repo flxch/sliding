@@ -36,7 +36,7 @@ func randomTestcase(op, inv sliding.Op[int], n, m, t int) testcase {
         elems:    randomElems(n),
         windows:  randomWindows(n, m, t),
     }
-    tc.expected = aggregate(op, randomElems(n), randomWindows(n, m, t))
+    tc.expected = aggregate(op, tc.elems, tc.windows)
     return tc
 }
 
