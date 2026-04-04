@@ -63,14 +63,15 @@ func leaf[A any]() tree[A] {
 
 // `singleton` returns the tree with the aggregated value `x` at index `i`.
 func singleton[A any](i int, x A) tree[A] {
-    // Note that we need a pointer here for the left and right child of the
+    // NOTE: We need a non-nil pointer here for the left and right child of the
     // singleton tree, i.e., a singleton is a tree with two children that are
-    // leaves and carry no data.  We could use the same leaf for all trees.
+    // leaves and carry no data.  We could use the same leaf for all singletons.
     // However, since tree nodes are parametric on the type A, we cannot do this
     // with a global variable.  nil does not work since the check `t.left ==
     // nil` (i.e., are we at a leaf?) in the selectors below.  Changing the
     // representation of singletons as leaves seems tricky.  Hence, we create a
-    // leaf for each singleton.  Food for thought.
+    // leaf for each singleton, which is only xshared between its left and right
+    // child.  Food for thought and room for improvement.
     l := leaf[A]()
     return tree[A]{
         data:  label[A]{from: i, to: i, aggregation: some(x)},
@@ -201,8 +202,8 @@ func slide[A any](op Op[option[A]], ch <-chan A, t tree[A], w Window) (tree[A], 
         return leaf[A](), false
     }
 
-    // Loop 1: Fold newly received elements directly into the result first that
-    // were not contained in the previous window.
+    // Loop 1: Fold newly received elements directly that were not contained in
+    // the previous window.
     r, ok := news(op, ch, from, max(0, to - from + 1), leaf[A]())
     if !ok {
         // Input channel closed; signal termination.
@@ -254,7 +255,7 @@ func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window
         if t, ok = slide(lop, in, t, w); !ok {
             // No more input elements.  Stop.
             // QUESTION: Should we return the elements that are in the
-            // incomplete window or the partially aggregated value?
+            // incomplete window or the partially aggregated value of them?
             return
         }
         // Send aggregated value.
