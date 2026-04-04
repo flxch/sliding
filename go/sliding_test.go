@@ -1,6 +1,9 @@
 package sliding_test
 
 import (
+    "math/rand"
+    "slices"
+    "testing"
     "github.com/flxch/sliding"
 )
 
@@ -19,4 +22,100 @@ type testcase struct {
     elems    []int
     windows  []sliding.Window
     expected []int
+}
+
+
+func generateTestcase(op, inv sliding.Op[int], elems []int, ws []sliding.Window) testcase {
+    aggregs := make([]int, len(ws))
+    for i, w := range ws {
+        aggregs[i] = elems[w.Left]
+        for j := w.Left + 1; j <= w.Right; j++ {
+            aggregs[i] = op(aggregs[i], elems[j])
+        }
+    }
+    return testcase{
+        op:       op,
+        inv:      inv,
+        elems:    elems,
+        windows:  ws,
+        expected: aggregs,
+    }
+}
+
+// n length of stream
+// m number of windows
+func randomTestCase(op, inv sliding.Op[int], n, m, t int) testcase {
+    return generateTestcase(op, inv, randomElems(n), randomWindows(n, m, t))
+}
+
+func randomElems(n int) []int {
+    elems := make([]int, n)
+    for i := 0; i < len(elems); i++ {
+        elems[i] = int(rand.Int31())
+    }
+    return elems
+}
+
+// t ~ window size
+func randomWindows(n, m, t int) []sliding.Window {
+    froms := make([]int, m + t)
+    for i := 0; i < len(froms); i++ {
+        froms[i] = rand.Intn(n)
+    }
+    slices.Sort(froms)
+
+    ws := make([]sliding.Window, m + t)
+    mr := froms[0] + rand.Intn(t)
+    for i := 0; i < len(ws); i++ {
+        //if i > 0 && froms[i] > ws[i-1].Right {
+        //    // Big shift.
+        //    ...
+        //}
+        if i > 0 {
+            mr = max(froms[i] + rand.Intn(t), ws[i-1].Right)
+        }
+        ws[i] = sliding.Window{froms[i], min(n, mr)}
+    }
+
+    // Trim sliding window at the beginning and at the end.
+    a := 0
+    for a < len(ws) && ws[a].Left == 0 {
+        a++
+    }
+    b := m - 1
+    for b > 0 && ws[b].Right == n {
+        b--
+    }
+    for len(ws[a:b+1]) < m {
+        if a > 0 {
+            a--
+        }
+        if b < m - 1 {
+            b++
+        }
+    }
+    if len(ws[a:b+1]) != m {
+        // Not enough windows.
+        if a > 0 {
+            a--
+        } else {
+            b++
+        }
+    }
+
+    return ws[a:b+1]
+}
+
+func TestRandomWindows(t *testing.T) {
+    ws := randomWindows(1000, 500, 20)
+    for i, w := range ws {
+        t.Logf("%d: |[%d, %d]| = %d", i, w.Left, w.Right, w.Right - w.Left)
+        if w.Left > w.Right {
+            t.Errorf("empty window: %v", w)
+        } else if i > 0 && w.Left < ws[i-1].Left {
+            t.Errorf("left index moved backwards: %v -> %v", ws[i-1], w)
+        } else if i > 0 && w.Right < ws[i-1].Right {
+            t.Errorf("right index moved backwards: %v -> %v", ws[i-1], w)
+        }
+    }
 }

@@ -76,6 +76,18 @@ func TestAggregateAssoc(t *testing.T) {
     }
 }
 
+func TestRandomAggregateAssoc(t *testing.T) {
+    count := 0
+    tc := randomTestCase(func(s, t int) int { count++; return s + t }, nil, 10000, 5000, 100)
+    res, err := runAggregateAssocTest(tc.op, tc.elems, tc.windows)
+    if err != nil {
+        t.Errorf("%v", err)
+    } else if !slices.Equal(res, tc.expected) {
+        t.Errorf("expected %v, got %v", tc.expected, res)
+    }
+    t.Logf("number of op applications: %d", count)
+}
+
 
 func runAggregateAssocTest[T any](op sliding.Op[T], elems []T, windows []sliding.Window) (res []T, err error) {
     in := make(chan T, 0)

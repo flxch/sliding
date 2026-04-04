@@ -69,6 +69,18 @@ func TestAggregateInv(t *testing.T) {
     }
 }
 
+func TestRandomAggregateInv(t *testing.T) {
+    opcount, invcount := 0, 0
+    tc := randomTestCase(func(s, t int) int { opcount++; return s + t }, func(s, t int) int { invcount++; return s - t }, 10000, 5000, 100)
+    res, err := runAggregateInvTest(tc.op, tc.inv, tc.elems, tc.windows)
+    if err != nil {
+        t.Errorf("%v", err)
+    } else if !slices.Equal(res, tc.expected) {
+        t.Errorf("expected %v, got %v", tc.expected, res)
+    }
+    t.Logf("number of op and inv applications: %d + %d = %d", opcount, invcount, opcount + invcount)
+}
+
 func TestAggregationInv(t *testing.T) {
     for i, tc := range aggregationInvTestcases {
         res, err := runAggregationInvTest(tc.op, tc.inv, tc.elems, tc.windows)
