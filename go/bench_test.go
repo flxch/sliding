@@ -8,7 +8,21 @@ import (
 )
 
 
-// A function that keeps the CPU busy for some time.
+// Benchmark parameters.
+
+const (
+    streamlen = 10000 // stream length
+    winsize   = 1000  // approximate window size
+    chsize    = 10    // channel size (in and out)
+    delay     = 10    // delay for aggregation operators
+)
+
+// Number of windows (equals the number of aggregated values).
+var winnums []int = []int{100, 200, 400, 800}
+
+
+// A function that keeps the CPU busy for some time.  Used in delay the
+// aggregation operators op and inv.
 func fib(n int) int {
     if n == 0 {
         return 0
@@ -22,8 +36,6 @@ func fib(n int) int {
 
 // Measure the time for a single operation that is used in the aggregation
 // benchmarks below.
-
-const delay = 10
 
 var f int
 func BenchmarkOp(b *testing.B) {
@@ -55,15 +67,6 @@ func BenchmarkInv(b *testing.B) {
 // window.
 
 type aggregFn func (<-chan int, chan<- int, sliding.Op[int], sliding.Op[int], sliding.Next[sliding.Window])
-
-const (
-    streamlen = 10000
-    winsize   = 1000
-    chsize    = 10
-)
-
-var winnums []int = []int{100, 200, 400, 800}
-var global int
 
 func BenchmarkAggregate(b *testing.B) {
     b.Logf("stream length: %d, window size: %d", streamlen, winsize)
@@ -114,6 +117,7 @@ func BenchmarkAggregateInv(b *testing.B) {
     }
 }
 
+var global int
 func run(b *testing.B, tc testcase, aggregate aggregFn) {
     in := make(chan int, chsize)
     go func() {
