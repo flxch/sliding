@@ -34,20 +34,19 @@ func lift[A any](op Op[A]) Op[option[A]] {
 }
 // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-// `label` holds the data stored at an inner tree node.  `aggregation` is an
-// option. It is `some(v)` for nodes for which the aggregation has already
-// compute from the index `from` to the index `to`.  Otherwise, it is `none`,
-// i.e., the aggregation has not yet been computed from the index `from` to the
-// index `to`.  Indices refer to the positions of the elements in the data
-// stream.
+// `label` holds the data stored at a tree node.  `aggregation` is an option. It
+// is `some(v)` for nodes for which the aggregation has already compute from the
+// index `from` to the index `to`.  Otherwise, it is `none`, i.e., the
+// aggregation has not yet been computed from the index `from` to the index
+// `to`.  Indices refer to the positions of the elements in the data stream.
 type label[A any] struct {
     from        int       // left index
     to          int       // right index
     aggregation option[A] // aggregated value [from..to]; maybe none
 }
 
-// `tree` represents a binary tree that is either a leaf or an inner node.
-// Inner nodes carry data and leaves carry no data.
+// `tree` represents a binary tree where the nodes may carry the aggregated
+// value of the subtrees.
 type tree[A any] struct {
     data  label[A] // aggregated value
     left  *tree[A] // left child
@@ -70,7 +69,7 @@ func singleton[A any](i int, x A) *tree[A] {
     }
 }
 
-// `combine` merges two trees under a new inner node whose aggregation is
+// `combine` merges two trees into a new tree whose aggregation is
 // `op(t1.aggregation, t2.aggregation)`.  `t1` is discharged and becomes the
 // left child and `t2` becomes the right child.  If either tree is a leaf the
 // other is returned as is.
@@ -99,7 +98,9 @@ func (t *tree[A]) isLeaf() bool {
     return t == nil
 }
 
-// `discharge` returns `t` with its aggregation cleared to none.
+// `discharge` returns `t` with its aggregation cleared to none.  Note that
+// `discharge` is not side-effect free.  The order in which it is called with
+// other functions might be important.
 // (Helper function in `combine`.)
 func discharge[A any](t *tree[A]) *tree[A] {
     t.data.aggregation = none[A]()
@@ -222,14 +223,14 @@ func skip[A any](ch <-chan A, k int) bool {
 
 // `AggregateAssoc` computes the aggregations of stream elements within a
 // sliding window for an associative operator.
-// Arguments:
 // - in:   a channel delivering x_0, x_1, x_2, ... in order (may be infinite)
 //   `AggregateAssoc` reads the elements from `in` only as far as required by
 //    the windows seen so far.
 // - out:  a channel on which results y_0, y_1, ... are sent, where
 //   y_i = x[l_i] op x[l_i+1] op ... op x[r_i].
 //   Note that the caller/creator is responsible for closing the channel.
-// - op:   an associative binary operator
+// - op:   a binary operator
+//   It is assumed that `op` is associative.
 // - next: a function returning the next window and true, or false when the
 //   window sequence is exhausted; the windows must satisfy the following
 //   conditions (i.e., windows always move to the right):
