@@ -80,15 +80,15 @@ func singleton[A any](i int, x A) tree[A] {
     }
 }
 
-// `combine` merges two trees under a new interior node whose aggregation is
+// `combine` merges two trees under a new inner node whose aggregation is
 // `op(t1.aggregation, t2.aggregation)`.  `t1` is discharged and becomes the
 // left child and `t2` becomes the right child.  If either tree is a leaf the
 // other is returned as is.
 func combine[A any](op Op[option[A]], t1, t2 tree[A]) tree[A] {
     switch {
-    case t1.left == nil:
+    case t1.isLeaf():
         return t2
-    case t2.left == nil:
+    case t2.isLeaf():
         return t1
     default:
         v := op(t1.data.aggregation, t2.data.aggregation)
@@ -105,16 +105,21 @@ func combine[A any](op Op[option[A]], t1, t2 tree[A]) tree[A] {
     }
 }
 
+// `isLeaf` returns true if `t` is a leaf.
+// (Helper function in `combine` above and the selectors below to clarify the
+// check whether the tree `t` is a leaf.)
+func (t tree[A]) isLeaf() bool {
+    return t.left == nil
+}
+
 // `discharge` returns `t` with its aggregation cleared to none.
 // (Helper function in `combine`.)
 func (t *tree[A]) discharge() {
     t.data.aggregation = none[A]()
 }
 
-// Tree selectors.
 
-// Helper functions to clarify the check whether the tree `t` is a leaf.
-func (t tree[A]) isLeaf() bool { return t.left == nil }
+// Tree selectors.
 
 func (t tree[A]) leftIndex() int {
     if t.isLeaf() {
@@ -214,11 +219,11 @@ func slide[A any](op Op[option[A]], ch <-chan A, t tree[A], w Window) (tree[A], 
     return reusables(op, t, w.Left, r), true
 }
 
-// `skip` discards the next `n` elements from the channel `ch`.  It returns
-// false if the channel was closed before `n` elements were received.
+// `skip` discards the next `k` elements from the channel `ch`.  It returns
+// false if the channel was closed before `k` elements were received.
 // (Helper function in `slide`.)
-func skip[A any](ch <-chan A, n int) bool {
-    for range n {
+func skip[A any](ch <-chan A, k int) bool {
+    for range k {
         if _, ok := <-ch; !ok {
             return false
         }
