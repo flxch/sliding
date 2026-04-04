@@ -1,5 +1,5 @@
 [package]
-name    = "sliding_window"
+name = "sliding_window"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,5 +8,5 @@ name = "sliding_window"
 path = "src/lib.rs"
 
 [[test]]
-name = "sliding_window_tests"
-path = "tests/sliding_window_tests.rs"
+name = "tests"
+path = "tests/tests.rs"
