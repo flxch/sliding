@@ -1,229 +1,239 @@
 """
-Sliding window aggregation algorithm.
+Greedy sliding window aggregation algorithm.
 
-Python design notes
--------------------
-The Go implementation uses channels for the input stream.  In Python the
-natural equivalent is an *iterator* (or generator): it is lazy, works for
-infinite sequences, and requires no threads or queues.  The internal stream
-helper below wraps any iterator and adds the same two primitives that the Go
-`input` struct exposes:
-  - read()  – advance and return the next element
-  - skip(n) – discard elements until the absolute position reaches n
+Reference:
+  D. Basin, F. Klaedtke, and E. Zalinescu.
+  Greedily Computing Associative Aggregations on Sliding Windows.
+  Information Processing Letters, 115(2):186-192, 2015.
 
-Both methods raise _StreamExhausted if the underlying iterator is exhausted.
-This is a dedicated exception rather than StopIteration so that stream
-exhaustion is never confused with the StopIteration that Python uses
-internally to drive for-loops and generators (see PEP 479).
+Go channels → Python iterators/generators
+==========================================
+Go's SlidingWindow function receives stream elements from an `in` channel and
+pushes results to an `out` channel.  In Python the idiomatic equivalent is a
+generator: the caller iterates over the stream with any iterable (list, generator
+expression, file, network source, …) and sliding_window itself is a generator
+that yields one aggregated value per window, consuming stream elements lazily.
+
+This means:
+  - The input stream can be infinite (only elements actually needed are consumed).
+  - The result sequence can be consumed lazily by the caller.
+  - No threads or async machinery are required.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Generic, Iterator, Optional, Tuple, TypeVar
+from typing import Callable, Generic, Iterable, Iterator, NamedTuple, Optional, TypeVar, Union
 
-A = TypeVar("A")
-Op = Callable[[A, A], A]
-Window = Tuple[int, int]  # (left_index, right_index), both inclusive
-
-
-# Stream exhaustion exception
-
-class _StreamExhausted(Exception):
-    """Raised when the input stream is exhausted before a window is complete."""
-
-# Internal stream wrapper
-
-class _Stream(Generic[A]):
-    """Wraps an iterator and tracks the absolute read position."""
-
-    def __init__(self, it: Iterator[A]) -> None:
-        self._it = it
-        self.count: int = 0  # number of elements already consumed
-
-    def read(self) -> A:
-        """Return the next element, advancing the position.
-        Raises _StreamExhausted if the stream is exhausted."""
-        try:
-            v = next(self._it)
-        except StopIteration:
-            raise _StreamExhausted("input stream exhausted while reading element")
-        self.count += 1
-        return v
-
-    def skip(self, n: int) -> None:
-        """Discard elements until self.count == n.
-        Raises _StreamExhausted if the stream is exhausted before reaching n."""
-        while self.count < n:
-            try:
-                next(self._it)
-            except StopIteration:
-                raise _StreamExhausted("input stream exhausted while skipping elements")
-            self.count += 1
+T = TypeVar("T")
+Op = Callable[[T, T], T]
 
 
-# Tree
+# ---------------------------------------------------------------------------
+# Window
+# ---------------------------------------------------------------------------
 
-@dataclass
-class _Label(Generic[A]):
-    from_idx: int
-    to_idx:   int
-    agg:      Optional[A]  # not None for live nodes, None for discharged nodes
+class Window(NamedTuple):
+    left: int
+    right: int
 
-class _Tree(Generic[A]):
-    """
-    A binary tree node.  A leaf is represented by ``data = None``.
-    Interior nodes carry a _Label and left/right children.
-    """
-    __slots__ = ("data", "left", "right")
 
-    def __init__(
-        self,
-        data:  Optional[_Label[A]] = None,
-        left:  Optional["_Tree[A]"] = None,
-        right: Optional["_Tree[A]"] = None,
-    ) -> None:
-        self.data  = data
-        self.left  = left
-        self.right = right
+# ---------------------------------------------------------------------------
+# Lifted operator  (None plays the role of the missing/discharged value)
+# ---------------------------------------------------------------------------
 
-    # -- selectors -----------------------------------------------------------
-
-    def left_index(self) -> int:
-        return -1 if self.data is None else self.data.from_idx
-
-    def right_index(self) -> int:
-        return -1 if self.data is None else self.data.to_idx
-
-    def extract(self) -> A:
-        if self.data is None or self.data.agg is None:
-            raise ValueError("No aggregated value at tree's root")
-        return self.data.agg
-
-    def discharge(self) -> None:
-        """Clear the aggregation of this node in-place."""
-        if self.data is not None:
-            self.data.agg = None
-
-# -- tree constructors -------------------------------------------------------
-
-def _leaf() -> _Tree:
-    return _Tree()
-
-def _singleton(i: int, x: A) -> _Tree[A]:
-    return _Tree(data=_Label(from_idx=i, to_idx=i, agg=x))
-
-def _lift(op: Op[A]) -> Op[Optional[A]]:
-    """Lift an operator to work on Optional values."""
-    def lifted(x: Optional[A], y: Optional[A]) -> Optional[A]:
+def lift(op: Op[T]) -> Op[Optional[T]]:
+    """Lift a binary operator so it works on Optional values."""
+    def lifted(x: Optional[T], y: Optional[T]) -> Optional[T]:
         if x is None or y is None:
             return None
         return op(x, y)
     return lifted
 
-def _combine(op: Op[Optional[A]], t1: _Tree[A], t2: _Tree[A]) -> _Tree[A]:
-    """
-    Merge two trees.  t1 is discharged and becomes the left child; t2 becomes
-    the right child.  If either tree is a leaf, return the other unchanged.
-    """
-    if t1.data is None:
+
+# ---------------------------------------------------------------------------
+# Tree  —  sealed hierarchy: _Leaf | _Node
+#
+# Splitting into two classes eliminates all Optional fields on the tree
+# structure itself:
+#   - _Leaf carries no data at all.
+#   - _Node always has a label and two (non-optional) children.
+# The only remaining Optional is _Node.aggregation, which is legitimately
+# optional: None means the node has been discharged (its cached value
+# invalidated) while its children are still reusable.
+# ---------------------------------------------------------------------------
+
+@dataclass(slots=True)
+class _Leaf(Generic[T]):
+    """A leaf node carrying no data."""
+    def left_index(self) -> int:  return -1
+    def right_index(self) -> int: return -1
+
+
+@dataclass(slots=True)
+class _Node(Generic[T]):
+    """An inner node with a label and two children."""
+    from_idx:    int
+    to_idx:      int
+    aggregation: Optional[T]   # None when discharged
+    left:        Tree[T]
+    right:       Tree[T]
+
+    def left_index(self) -> int:  return self.from_idx
+    def right_index(self) -> int: return self.to_idx
+
+    def discharge(self) -> None:
+        """Invalidate the cached aggregation while keeping children intact."""
+        self.aggregation = None
+
+
+Tree = Union[_Leaf[T], _Node[T]]
+
+
+# ---------------------------------------------------------------------------
+# Constructors
+# ---------------------------------------------------------------------------
+
+def _leaf() -> _Leaf:
+    return _Leaf()
+
+
+def _singleton(i: int, x: T) -> _Node[T]:
+    lf = _leaf()
+    return _Node(from_idx=i, to_idx=i, aggregation=x, left=lf, right=lf)
+
+
+# ---------------------------------------------------------------------------
+# Tree helpers
+# ---------------------------------------------------------------------------
+
+def _combine(op: Op[Optional[T]], t1: Tree[T], t2: Tree[T]) -> Tree[T]:
+    """Merge two trees under a new node, discharging t1."""
+    if isinstance(t1, _Leaf):
         return t2
-    if t2.data is None:
+    if isinstance(t2, _Leaf):
         return t1
-    v = op(t1.data.agg, t2.data.agg)
+    v = op(t1.aggregation, t2.aggregation)
     t1.discharge()
-    return _Tree(
-        data  = _Label(from_idx=t1.data.from_idx, to_idx=t2.data.to_idx, agg=v),
-        left  = t1,
-        right = t2,
+    return _Node(
+        from_idx=t1.from_idx,
+        to_idx=t2.to_idx,
+        aggregation=v,
+        left=t1,
+        right=t2,
     )
 
-# Core algorithm helpers
 
-def _news(op: Op[Optional[A]], s: _Stream[A], n: int, i: int, acc: _Tree[A]) -> _Tree[A]:
+def _reusables(op: Op[Optional[T]], t: Tree[T], i: int, acc: Tree[T]) -> Tree[T]:
     """
-    Read ``n`` new elements from ``s`` starting at absolute index ``i``,
-    build singleton trees, and fold them (right-to-left) into ``acc``.
-    Raises _StreamExhausted if the stream is exhausted before all n elements
-    are read.
-    """
-    if n == 0:
-        return acc
-    v   = s.read()
-    acc = _news(op, s, n - 1, i + 1, acc)
-    return _combine(op, _singleton(i, v), acc)
-
-
-def _reusables(op: Op[Optional[A]], t: _Tree[A], i: int, acc: _Tree[A]) -> _Tree[A]:
-    """
-    Fold every maximal subtree of ``t`` whose index range is entirely >= ``i``
-    into ``acc`` via ``combine``.  Iterative to avoid Python recursion limits.
+    Fold every maximal subtree of `t` whose index range lies entirely at or
+    after `i` into `acc` via `_combine`.  Tail-recursive loop (mirrors Go).
     """
     while True:
         if i > t.right_index():
             return acc
         if i == t.left_index():
             return _combine(op, t, acc)
-        # t must be an interior node here
-        r_child = t.right  # type: ignore[assignment]
-        l_child = t.left   # type: ignore[assignment]
-        if i >= r_child.left_index():  # type: ignore[union-attr]
-            t = r_child   # tail-recurse into right subtree
+        assert isinstance(t, _Node)
+        if i >= t.right.left_index():
+            t = t.right   # tail call: _reusables(op, t.right, i, acc)
         else:
-            acc = _combine(op, r_child, acc)
-            t   = l_child  # tail-recurse into left subtree
+            acc = _combine(op, t.right, acc)
+            t = t.left    # tail call: _reusables(op, t.left, i, acc)
 
-def _slide(op: Op[Optional[A]], s: _Stream[A], t: _Tree[A], w: Window) -> _Tree[A]:
-    """
-    Advance the tree by one window step ``w = (left, right)``.
-    Raises _StreamExhausted if the stream is exhausted before all required
-    elements are available.
-    """
-    left, right = w
-    i = max(left, 1 + t.right_index())
 
+def _news(op: Op[Optional[T]], stream: Iterator[T], start: int, n: int,
+          acc: Tree[T]) -> Tree[T]:
+    """
+    Read `n` elements from `stream` starting at index `start`, build singleton
+    trees, and fold them right-to-left into `acc`.
+
+    The recursion reads the element at `start` first, then recurses for the
+    remaining n-1 elements, and combines on the way back up — so the leftmost
+    element ends up deepest on the left spine without any intermediate list.
+
+    Equivalent to Go's `news` function; StopIteration propagates to the caller
+    (sliding_window) to signal stream exhaustion.
+
+    Note: the recursion depth equals n, the number of new elements in the
+    current window step.  Python's default limit is 1000 (adjustable via
+    sys.setrecursionlimit).  If window steps can introduce more than ~1000 new
+    elements, replace the recursive implementation with the iterative one below,
+    which is equivalent but avoids deep call stacks at the cost of an
+    intermediate list and a reversal:
+
+        nodes: list[_Node[T]] = []
+        for j in range(n):
+            nodes.append(_singleton(start + j, next(stream)))
+        for node in reversed(nodes):
+            acc = _combine(op, node, acc)
+        return acc
+    """
+    if n <= 0:
+        return acc
+    v = next(stream)  # raises StopIteration when stream is exhausted
+    acc = _news(op, stream, start + 1, n - 1, acc)
+    return _combine(op, _singleton(start, v), acc)
+
+
+def _skip(stream: Iterator, n: int) -> None:
+    """Discard the next `n` elements from `stream`."""
+    for _ in range(n):
+        next(stream)  # raises StopIteration on premature exhaustion
+
+
+def _slide(op: Op[Optional[T]], stream: Iterator[T], t: Tree[T],
+           w: Window) -> Tree[T]:
+    """Advance tree `t` by one window step, consuming elements from `stream`."""
+    from_idx = max(w.left, 1 + t.right_index())
+    to_idx = w.right
     # Skip elements that fall between the previous window and the current one.
-    s.skip(i)
-
-    # Fold newly read elements into a fresh subtree.
-    r = _news(op, s, max(0, right - i + 1), i, _leaf())
-
+    _skip(stream, from_idx - (1 + t.right_index()))
+    # Fold newly seen elements.
+    r = _news(op, stream, from_idx, max(0, to_idx - from_idx + 1), _leaf())
     # Fold reusable subtrees from the previous window.
-    return _reusables(op, t, left, r)
+    return _reusables(op, t, w.left, r)
 
 
+# ---------------------------------------------------------------------------
 # Public API
+# ---------------------------------------------------------------------------
 
-def sliding_window(op: Op[A], xs: Iterator[A], windows: Iterator[Window]) -> Iterator[A]:
+def sliding_window(
+    op: Op[T],
+    stream: Iterable[T],
+    windows: Iterable[Window],
+) -> Iterator[T]:
     """
-    Compute the associative aggregation of each window over the input sequence.
+    Compute the aggregation of stream elements within a sliding window.
 
     Parameters
     ----------
-    op:
-        An associative binary operator ``(A, A) -> A``.
-    xs:
-        An iterator (possibly infinite) of input elements x_0, x_1, ...
-        Elements are consumed lazily: only as many as required by the windows
-        seen so far are read.
-    windows:
-        An iterator of ``(left, right)`` index pairs (both inclusive, 0-based).
-        Must satisfy:
-          - 0 <= l_0 <= l_1 <= ... (left bounds non-decreasing)
-          - 0 <= r_0 <= r_1 <= ... (right bounds non-decreasing)
-          - l_i <= r_i for all i
+    op      : associative binary operator  (a, b) -> a op b
+    stream  : iterable of data elements x_0, x_1, x_2, ...
+              (may be an infinite generator; only elements actually required
+              by the windows are consumed)
+    windows : iterable of Window(left, right) pairs satisfying:
+                0 <= l_0 <= l_1 <= ...
+                0 <= r_0 <= r_1 <= ...
+                l_i <= r_i  for all i
 
     Yields
     ------
-    y_i = x[l_i] op x[l_i+1] op ... op x[r_i]  for each window (l_i, r_i).
-    """
-    lop = _lift(op)
-    s   = _Stream(iter(xs))
-    t   = _leaf()
+    y_i = x[l_i] op x[l_i+1] op ... op x[r_i]  for each window i
 
-    for w in windows:
-        try:
-            t = _slide(lop, s, t, w)
-        except _StreamExhausted:
-            return  # input stream exhausted before window was complete
-        yield t.extract()
+    The function is itself a generator, so results are produced lazily.
+    """
+    lop: Op[Optional[T]] = lift(op)
+    it: Iterator[T] = iter(stream)
+    t: Tree[T] = _leaf()
+    try:
+        for w in windows:
+            t = _slide(lop, it, t, w)
+            assert isinstance(t, _Node) and t.aggregation is not None, \
+                "no aggregated value at tree's root"
+            yield t.aggregation
+    except StopIteration:
+        # Stream exhausted before all windows were satisfied; stop silently,
+        # matching Go's behaviour of returning without sending further results.
+        return
