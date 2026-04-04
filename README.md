@@ -17,10 +17,11 @@ window algorithm described in the paper
 
 in several programming languages with the help of LLMs.  I think the
 sliding window algorithm is a good choice for the goals.  It is not
-too complex but not trivial.  Furthermore, a precise description
-including a correctness proof is provided in the above paper.  It is
-also not a standard algorithm for which many implementations already
-exist and which may have been used in the training phase of LLMs.
+too complex but with some subleties and not trivial.  Furthermore, a
+precise description including a correctness proof is provided in the
+above paper.  It is also not a standard algorithm for which many
+implementations already exist and which may have been used in the
+training phase of LLMs.
 
 For each implementation of the sliding window algorithm, the style of
 the respective programming language should be respected.
