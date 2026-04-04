@@ -1,6 +1,5 @@
 package sliding
 
-
 // TODO: Use extra package `container/maybe` with the Option[A] type.
 // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 // `option[A]` represents an optional value: `ok == true` means that `value` is
@@ -223,18 +222,17 @@ func skip[A any](ch <-chan A, k int) bool {
 
 // `AggregateAssoc` computes the aggregations of stream elements within a
 // sliding window for an associative operator.
-// - in:   a channel delivering x_0, x_1, x_2, ... in order (may be infinite)
-//   `AggregateAssoc` reads the elements from `in` only as far as required by
-//    the windows seen so far.
-// - out:  a channel on which results y_0, y_1, ... are sent, where
-//   y_i = x[l_i] op x[l_i+1] op ... op x[r_i].
-//   Note that the caller/creator is responsible for closing the channel.
-// - op:   a binary operator
-//   It is assumed that `op` is associative.
-// - next: a function returning the next window and true, or false when the
-//   window sequence is exhausted; the windows must satisfy the following
-//   conditions (i.e., windows always move to the right):
-//   0 <= l_0 <= l_1 <= ... and 0 <= r_0 <= r_1 <= ... and l_i <= r_i
+// - `in`:   a channel delivering x0, x1, x2, ... in order (may be infinite)
+//           `AggregateAssoc` reads the elements from `in` only as far as
+//           required by the windows seen so far.
+// - `out`:  a channel on which results y0, y1, ... are sent, where
+//           yi = x[li] op x[li+1] op ... op x[ri].
+//           Note that the caller/creator is responsible for closing the channel.
+// - `op`:   a binary operator, which is assumed to be associative.
+// - `next`: a function returning the next window and true, or false when the
+//           window sequence is exhausted; the windows must satisfy the following
+//           conditions (i.e., windows always move to the right):
+//           0 <= l0 <= l1 <= ...  and  0 <= r0 <= r1 <= ...  and  li <= ri
 func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window]) {
     lop := lift(op)
     t := leaf[A]()
