@@ -176,6 +176,10 @@ after fixing the bugs, the quality of the generated code was not
 great.  Performance, understandability, succinctness, and style had to
 be improved.
 
+The experience with ChatGPT based on GPT-5-mini was similar.  Since I
+spotted the problems quickly (as they were similar to the ones in
+Claude), I was much quicker instruct the ChatGPT to make the necessary
+changes.
 
 ### Python
 

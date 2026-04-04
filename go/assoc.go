@@ -34,44 +34,6 @@ func lift[A any](op Op[A]) Op[option[A]] {
 }
 // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-// `input` tracks the position of an input channel, allowing elements to be
-// skipped or read one at a time.
-type input[A any] struct {
-    // Channel from which the elements are read.
-    ch   <-chan A
-    // Number of received elements, which is equal to the absolute index of the
-    // next element to be read from the channel `ch`.
-    count int
-}
-
-func newInput[A any](ch <-chan A) *input[A] {
-    return &input[A]{ch: ch}
-}
-
-// `read` reads the next element from the input channel, advancing the position.
-// It returns the element and true on success, or the zero value and false if
-// the channel was closed.
-func (s *input[A]) read() (A, bool) {
-    v, ok := <-s.ch
-    if ok {
-        s.count++
-    }
-    return v, ok
-}
-
-// `skip` discards all elements with absolute index smaller than `n` by reading
-// them from the input channel and dropping them.  It returns false if the
-// channel was closed before `n` was reached.
-func (s *input[A]) skip(n int) bool {
-    for s.count < n {
-        if _, ok := <-s.ch; !ok {
-            return false
-        }
-        s.count++
-    }
-    return true
-}
-
 // `label` holds the data stored at an interior tree node.  `aggregation` is an
 // option: some(v) for live nodes, none for discharged nodes whose aggregate has
 // been consumed and is no longer needed.
@@ -85,9 +47,9 @@ type label[A any] struct {
 // The ok field of the embedded option[label[A]] plays the role of the
 // leaf/non-leaf flag: isNone means this is a leaf.
 type tree[A any] struct {
-    data  option[label[A]] // aggregated value from to; maybe none
-    left  *tree[A]         // left child
-    right *tree[A]         // right child
+    data  label[A] // aggregated value from to; maybe none
+    left  *tree[A] // left child
+    right *tree[A] // right child
 }
 
 // Tree constructors.
@@ -99,8 +61,11 @@ func leaf[A any]() tree[A] {
 
 // `singelton` returns the aggregated value `x` at index `i`.
 func singleton[A any](i int, x A) tree[A] {
+    l := leaf[A]()
     return tree[A]{
-        data: some(label[A]{from: i, to: i, aggregation: some(x)}),
+        data:  label[A]{from: i, to: i, aggregation: some(x)},
+        left:  &l,
+        right: &l,
     }
 }
 
@@ -110,19 +75,19 @@ func singleton[A any](i int, x A) tree[A] {
 // other is returned as is.
 func combine[A any](op Op[option[A]], t1, t2 tree[A]) tree[A] {
     switch {
-    case t1.data.isNone():
+    case t1.left == nil:
         return t2
-    case t2.data.isNone():
+    case t2.left == nil:
         return t1
     default:
-        v := op(t1.data.value.aggregation, t2.data.value.aggregation)
+        v := op(t1.data.aggregation, t2.data.aggregation)
         t1.discharge()
         return tree[A]{
-            data:  some(label[A]{
-                from:        t1.data.value.from,
-                to:          t2.data.value.to,
+            data:  label[A]{
+                from:        t1.data.from,
+                to:          t2.data.to,
                 aggregation: v,
-            }),
+            },
             left:  &t1,
             right: &t2,
         }
@@ -132,30 +97,30 @@ func combine[A any](op Op[option[A]], t1, t2 tree[A]) tree[A] {
 // `discharge` returns `t` with its aggregation cleared to none.
 // (Helper function in `combine`.)
 func (t *tree[A]) discharge() {
-    t.data.value.aggregation = none[A]()
+    t.data.aggregation = none[A]()
 }
 
 // Tree selectors.
 
 func (t tree[A]) leftIndex() int {
-    if t.data.isNone() {
+    if t.left == nil {
         return -1
     }
-    return t.data.value.from
+    return t.data.from
 }
 
 func (t tree[A]) rightIndex() int {
-    if t.data.isNone() {
+    if t.left == nil {
         return -1
     }
-    return t.data.value.to
+    return t.data.to
 }
 
 func (t tree[A]) extract() A {
-    if t.data.isNone() || t.data.value.aggregation.isNone() {
+    if t.left == nil || t.data.aggregation.isNone() {
         panic("no aggregated value at tree's root")
     }
-    return t.data.value.aggregation.value
+    return t.data.aggregation.value
 }
 
 // Auxiliary tree functions.
@@ -165,18 +130,19 @@ func (t tree[A]) extract() A {
 // deepest on the left spine), and folds the result into `acc`.  It returns the
 // updated accumulator and true, or acc unchanged and false if the channel was
 // closed before all elements were read.
-func news[A any](op Op[option[A]], s *input[A], n, i int, acc tree[A]) (tree[A], bool) {
+func news[A any](op Op[option[A]], ch <-chan A, i, n int, acc tree[A]) (tree[A], bool) {
     if n == 0 {
         return acc, true
     }
 
     // Read next element from the input channel.
-    v, ok := s.read()
+    v, ok := <-ch
     if !ok {
         // Input channel closed; signal termination.
         return acc, false
     }
-    if acc, ok = news(op, s, n - 1, i + 1, acc); !ok {
+
+    if acc, ok = news(op, ch, i + 1, n - 1, acc); !ok {
         return acc, false
     }
     return combine(op, singleton(i, v), acc), true
@@ -193,14 +159,15 @@ func reusables[A any](op Op[option[A]], t tree[A], i int, acc tree[A]) tree[A] {
         if i == t.leftIndex() {
             return combine(op, t, acc)
         }
-        //if t.data.isNone() {
+        //if t.left == nil {
         //    panic("reusables: unexpected leaf")
         //}
-        if r, s := *t.left, *t.right; i >= s.leftIndex() {
-            t = s // tail call: reusables(op, s, l, acc)
+        t1, t2 := *t.left, *t.right
+        if i >= t2.leftIndex() {
+            t = t2 // tail call: reusables(op, t2, l, acc)
         } else {
-            acc = combine(op, s, acc)
-            t = r // tail call: reusables(op, r, l, acc)
+            acc = combine(op, t2, acc)
+            t = t1 // tail call: reusables(op, t1, l, acc)
         }
     }
 }
@@ -208,25 +175,38 @@ func reusables[A any](op Op[option[A]], t tree[A], i int, acc tree[A]) tree[A] {
 // `slide` advances the tree by one window step.  It returns the updated tree
 // and true on success, or the zero tree and false if the input channel was
 // closed before all required elements were available.
-func slide[A any](op Op[option[A]], s *input[A], t tree[A], w Window) (tree[A], bool) {
-    i := max(w.Left, 1 + t.rightIndex())
+func slide[A any](op Op[option[A]], ch <-chan A, t tree[A], w Window) (tree[A], bool) {
+    from := max(w.Left, 1 + t.rightIndex())
+    to := w.Right
 
-    // Skip elements that lie after the previous windows and before the current
+    // Skip elements that are after the previous window and before the current
     // window.  These elements have not yet been read from the input channel.
-    if !s.skip(i) {
+    if ok := skip(ch, from - ( 1 + t.rightIndex())); !ok {
         // Input channel closed; signal termination.
         return leaf[A](), false
     }
 
     // Loop 1: Fold newly received elements directly into the result first that
     // were not contained in the previous window.
-    r, ok := news(op, s, max(0, w.Right - i + 1), i, leaf[A]())
+    r, ok := news(op, ch, from, max(0, to - from + 1), leaf[A]())
     if !ok {
         // Input channel closed; signal termination.
         return leaf[A](), false
     }
     // Loop 2: Fold the reusable subtrees from the previous window's tree.
     return reusables(op, t, w.Left, r), true
+}
+
+// `skip` discards `n` elements with the the input channel `ch`.  It returns
+// false if the channel was closed before `n` elements where received.
+// (Helper function in `slide`.)
+func skip[A any](ch <-chan A, n int) bool {
+    for range n {
+        if _, ok := <-ch; !ok {
+            return false
+        }
+    }
+    return true
 }
 
 
@@ -245,7 +225,6 @@ func slide[A any](op Op[option[A]], s *input[A], t tree[A], w Window) (tree[A], 
 //   0 <= l_0 <= l_1 <= ... and 0 <= r_0 <= r_1 <= ... and l_i <= r_i.
 func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window]) {
     lop := lift(op)
-    s := newInput[A](in)
     t := leaf[A]()
 
     for {
@@ -256,7 +235,7 @@ func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window
             return
         }
         // Compute aggregation.
-        if t, ok = slide(lop, s, t, w); !ok {
+        if t, ok = slide(lop, in, t, w); !ok {
             // No more input elements.  Stop.
             // QUESTION: Should we return the elements that are in the
             // incomplete window or the partially aggregated value?
