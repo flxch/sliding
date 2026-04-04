@@ -147,8 +147,8 @@ func (t tree[A]) extract() A {
 // accumulator and true, or acc unchanged and false if the channel was closed
 // before all elements were read.
 func news[A any](op Op[option[A]], ch <-chan A, i, n int, acc tree[A]) (tree[A], bool) {
-    if n == 0 {
-        // Done; no more elements to be received.
+    if n <= 0 {
+        // Done; all elements for the windows have have been received.
         return acc, true
     }
 
