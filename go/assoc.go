@@ -113,27 +113,28 @@ func (t *tree[A]) discharge() {
 
 // Tree selectors.
 
+// Helper functions to clarify the check whether the tree `t` is a leaf.
+func (t tree[A]) isLeaf() bool { return t.left == nil }
+
 func (t tree[A]) leftIndex() int {
-    if t.left == nil {
-        // We are at a leaf.
+    if t.isLeaf() {
         return -1
     }
     return t.data.from
 }
 
 func (t tree[A]) rightIndex() int {
-    if t.left == nil {
-        // We are at a leaf.
+    if t.isLeaf() {
         return -1
     }
     return t.data.to
 }
 
 func (t tree[A]) extract() A {
-    if t.left == nil || t.data.aggregation.isNone() {
-        // We are at a leaf or the aggregation has not been computed yet.  This
-        // should never be the case.
-        panic("no aggregated value at tree's root")
+    if t.isLeaf() || t.data.aggregation.isNone() {
+        // The extract function should never be called for leaves or when
+        // the aggregation has not been computed yet.
+        panic("no aggregated value at the tree's root")
     }
     return t.data.aggregation.value
 }
@@ -176,7 +177,7 @@ func reusables[A any](op Op[option[A]], t tree[A], i int, acc tree[A]) tree[A] {
         if i == t.leftIndex() {
             return combine(op, t, acc)
         }
-        //if t.left == nil {
+        //if t.isLeaf() {
         //    panic("reusables: unexpected leaf")
         //}
         if t1, t2 := *t.left, *t.right; i >= t2.leftIndex() {
