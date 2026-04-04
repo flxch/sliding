@@ -71,7 +71,7 @@ func TestAggregateInv(t *testing.T) {
 
 func TestRandomAggregateInv(t *testing.T) {
     opcount, invcount := 0, 0
-    tc := randomTestCase(func(s, t int) int { opcount++; return s + t }, func(s, t int) int { invcount++; return s - t }, 10000, 5000, 100)
+    tc := randomTestcase(func(s, t int) int { opcount++; return s + t }, func(s, t int) int { invcount++; return s - t }, 10000, 5000, 100)
     res, err := runAggregateInvTest(tc.op, tc.inv, tc.elems, tc.windows)
     if err != nil {
         t.Errorf("%v", err)

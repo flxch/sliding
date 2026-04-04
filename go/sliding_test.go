@@ -25,7 +25,31 @@ type testcase struct {
 }
 
 
-func generateTestcase(op, inv sliding.Op[int], elems []int, ws []sliding.Window) testcase {
+// Functions for generating random input for tests and benchmarks.
+
+// n length of stream
+// m number of windows
+func randomTestcase(op, inv sliding.Op[int], n, m, t int) testcase {
+    tc := testcase{
+        op:       op,
+        inv:      inv,
+        elems:    randomElems(n),
+        windows:  randomWindows(n, m, t),
+    }
+    tc.expected = aggregate(op, randomElems(n), randomWindows(n, m, t))
+    return tc
+}
+
+func randomBenchmark(op, inv sliding.Op[int], n, m, t int) testcase {
+    return testcase{
+        op:       op,
+        inv:      inv,
+        elems:    randomElems(n),
+        windows:  randomWindows(n, m, t),
+    }
+}
+
+func aggregate(op sliding.Op[int], elems []int, ws []sliding.Window) []int {
     aggregs := make([]int, len(ws))
     for i, w := range ws {
         aggregs[i] = elems[w.Left]
@@ -33,19 +57,7 @@ func generateTestcase(op, inv sliding.Op[int], elems []int, ws []sliding.Window)
             aggregs[i] = op(aggregs[i], elems[j])
         }
     }
-    return testcase{
-        op:       op,
-        inv:      inv,
-        elems:    elems,
-        windows:  ws,
-        expected: aggregs,
-    }
-}
-
-// n length of stream
-// m number of windows
-func randomTestCase(op, inv sliding.Op[int], n, m, t int) testcase {
-    return generateTestcase(op, inv, randomElems(n), randomWindows(n, m, t))
+    return aggregs
 }
 
 func randomElems(n int) []int {
@@ -106,6 +118,9 @@ func randomWindows(n, m, t int) []sliding.Window {
     return ws[a:b+1]
 }
 
+
+// Test that the randomly generated window sequence satisfies the conditions of
+// a sliding window.
 func TestRandomWindows(t *testing.T) {
     ws := randomWindows(1000, 500, 20)
     for i, w := range ws {
