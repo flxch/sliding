@@ -1,2 +1,4 @@
+github.com/flxch/container v0.0.0-20260405062623-45525c2fca09 h1:CTkDrnKzk+eyUoeMF25+shPBZ+xIDRJcEp6jNgC7/Tc=
+github.com/flxch/container v0.0.0-20260405062623-45525c2fca09/go.mod h1:4dAQ0mXJ7xJS/n9/x30zLS7FMPIwJw5Io3de497zFcs=
 github.com/flxch/pipeline v0.0.0-20260326180643-d3cb8d9a9613 h1:QElV1TBtGIYFl9QG7z3a6kexpRyLgv5Uza7bZ0AZWCI=
 github.com/flxch/pipeline v0.0.0-20260326180643-d3cb8d9a9613/go.mod h1:H8Ux/XuYoCr97rr97iDPyOmhpLaenx1etxX4rcxYzyE=

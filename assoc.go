@@ -1,37 +1,9 @@
 package sliding
 
-// TODO: Use extra package `container/maybe` with the Option[A] type.
-// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-// `option[A]` represents an optional value: `ok == true` means that `value` is
-// valid and `ok == false` means no value is present.
-type option[A any] struct {
-    value A
-    ok    bool
-}
+import (
+    "github.com/flxch/container/option"
+)
 
-// `some` wraps the value `v` in an option.
-func some[A any](v A) option[A] { return option[A]{value: v, ok: true} }
-
-// `none` returns an empty option.
-func none[A any]() option[A] { return option[A]{} }
-
-// `isSome` reports whether the option holds a value.
-func (o option[A]) isSome() bool { return o.ok }
-
-// `isNone` reports whether the option holds no value.
-func (o option[A]) isNone() bool { return !o.ok }
-
-// `lift` wraps the operator `op` so it works on option values: the result is
-// some(op(x, y)) when both inputs are some, and none, otherwise.
-func lift[A any](op Op[A]) Op[option[A]] {
-    return func(x, y option[A]) option[A] {
-        if x.isNone() || y.isNone() {
-            return none[A]()
-        }
-        return some(op(x.value, y.value))
-    }
-}
-// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 // `label` holds the data stored at a tree node.  `aggregation` is an option. It
 // is `some(v)` for nodes for which the aggregation has already compute from the
@@ -39,9 +11,9 @@ func lift[A any](op Op[A]) Op[option[A]] {
 // aggregation has not yet been computed from the index `from` to the index
 // `to`.  Indices refer to the positions of the elements in the data stream.
 type label[A any] struct {
-    from        int       // left index
-    to          int       // right index
-    aggregation option[A] // aggregated value [from..to]; maybe none
+    from        int              // left index
+    to          int              // right index
+    aggregation option.Option[A] // aggregated value [from..to]; maybe none
 }
 
 // `tree` represents a binary tree where the nodes may carry the aggregated
@@ -62,7 +34,7 @@ func leaf[A any]() *tree[A] {
 // `singleton` returns the tree with the aggregated value `x` at index `i`.
 func singleton[A any](i int, x A) *tree[A] {
     return &tree[A]{
-        data:  label[A]{from: i, to: i, aggregation: some(x)},
+        data:  label[A]{from: i, to: i, aggregation: option.Some(x)},
         left:  nil,
         right: nil,
     }
@@ -72,7 +44,7 @@ func singleton[A any](i int, x A) *tree[A] {
 // `op(t1.aggregation, t2.aggregation)`.  `t1` is discharged and becomes the
 // left child and `t2` becomes the right child.  If either tree is a leaf the
 // other is returned as is.
-func combine[A any](op Op[option[A]], t1, t2 *tree[A]) *tree[A] {
+func combine[A any](op Op[option.Option[A]], t1, t2 *tree[A]) *tree[A] {
     switch {
     case t1.isLeaf():
         return t2
@@ -102,7 +74,7 @@ func (t *tree[A]) isLeaf() bool {
 // other functions might be important.
 // (Helper function in `combine`.)
 func discharge[A any](t *tree[A]) *tree[A] {
-    t.data.aggregation = none[A]()
+    t.data.aggregation = option.None[A]()
     return t
 }
 
@@ -123,12 +95,12 @@ func (t *tree[A]) rightIndex() int {
 }
 
 func (t *tree[A]) extract() A {
-    if t.isLeaf() || t.data.aggregation.isNone() {
+    if t.isLeaf() || t.data.aggregation.IsNone() {
         // The extract function should never be called for leaves or when
         // the aggregation has not been computed yet.
         panic("no aggregated value at the tree's root")
     }
-    return t.data.aggregation.value
+    return t.data.aggregation.Value()
 }
 
 func (t *tree[A]) children() (*tree[A], *tree[A]) {
@@ -142,7 +114,7 @@ func (t *tree[A]) children() (*tree[A], *tree[A]) {
 // the left spine), and folds the result into `acc`.  It returns the updated
 // accumulator and true, or acc unchanged and false if the channel was closed
 // before all elements were read.
-func news[A any](op Op[option[A]], ch <-chan A, i, n int, acc *tree[A]) (*tree[A], bool) {
+func news[A any](op Op[option.Option[A]], ch <-chan A, i, n int, acc *tree[A]) (*tree[A], bool) {
     if n <= 0 {
         // Done; all elements for the windows have have been received.
         return acc, true
@@ -165,7 +137,7 @@ func news[A any](op Op[option[A]], ch <-chan A, i, n int, acc *tree[A]) (*tree[A
 // `reusables` folds every maximal subtree of `t` whose index range lies
 // entirely at or after `i` into `acc` via `combine`.  The tail-recursive
 // implementation was replaced by an implementation with a for loop.
-func reusables[A any](op Op[option[A]], t *tree[A], i int, acc *tree[A]) *tree[A] {
+func reusables[A any](op Op[option.Option[A]], t *tree[A], i int, acc *tree[A]) *tree[A] {
     for {
         if i > t.rightIndex() {
             return acc
@@ -186,7 +158,7 @@ func reusables[A any](op Op[option[A]], t *tree[A], i int, acc *tree[A]) *tree[A
 // tree by aggregating the elements in the window `w` with the operation `op`
 // and true on success, or a leaf and false if the input channel was closed
 // before all elements within the window `w` were received.
-func slide[A any](op Op[option[A]], ch <-chan A, t *tree[A], w Window) (*tree[A], bool) {
+func slide[A any](op Op[option.Option[A]], ch <-chan A, t *tree[A], w Window) (*tree[A], bool) {
     from, to := max(w.Left, 1 + t.rightIndex()), w.Right
 
     // Skip elements that are after the previous window and before the current
@@ -234,7 +206,7 @@ func skip[A any](ch <-chan A, k int) bool {
 //           conditions (i.e., windows always move to the right):
 //           0 <= l0 <= l1 <= ...  and  0 <= r0 <= r1 <= ...  and  li <= ri
 func AggregateAssoc[A any](in <-chan A, out chan<- A, op Op[A], next Next[Window]) {
-    lop := lift(op)
+    lop := option.LiftOp(op)
     t := leaf[A]()
 
     for {
