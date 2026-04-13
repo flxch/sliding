@@ -25,10 +25,34 @@ type testcase struct {
 }
 
 
-// Functions for generating random input for tests and benchmarks.
+// Functions for generating input for tests and benchmarks.
 
-// n length of stream
-// m number of windows
+// n = stream length
+// s = window size
+// d = window shift
+func fixedTestcase(op, inv sliding.Op[int], n, s, d int) testcase {
+    tc := testcase{
+        op:       op,
+        inv:      inv,
+        elems:    randomElems(n),
+        windows:  fixedWindows(n, s, d),
+    }
+    tc.expected = aggregate(op, tc.elems, tc.windows)
+    return tc
+}
+
+func fixedBenchmark(op, inv sliding.Op[int], n, s, d int) testcase {
+    return testcase{
+        op:       op,
+        inv:      inv,
+        elems:    randomElems(n),
+        windows:  fixedWindows(n, s, d),
+    }
+}
+
+// n = stream length
+// m = number of windows
+// t ~ window size
 func randomTestcase(op, inv sliding.Op[int], n, m, t int) testcase {
     tc := testcase{
         op:       op,
@@ -49,6 +73,7 @@ func randomBenchmark(op, inv sliding.Op[int], n, m, t int) testcase {
     }
 }
 
+
 func aggregate(op sliding.Op[int], elems []int, ws []sliding.Window) []int {
     aggregs := make([]int, len(ws))
     for i, w := range ws {
@@ -68,7 +93,14 @@ func randomElems(n int) []int {
     return elems
 }
 
-// t ~ window size
+func fixedWindows(n, s, d int) []sliding.Window {
+    ws := []sliding.Window{}
+    for i := 0; i < n - s; i += d {
+        ws = append(ws, sliding.Window{Left: i, Right: min(n - 1, i + s)})
+    }
+    return ws
+}
+
 func randomWindows(n, m, t int) []sliding.Window {
     froms := make([]int, m + t)
     for i := 0; i < len(froms); i++ {

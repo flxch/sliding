@@ -64,7 +64,7 @@ func TestAggregate(t *testing.T) {
     }
 }
 
-func TestRandomAggregate(t *testing.T) {
+func TestAggregate_Random(t *testing.T) {
     count := 0
     tc := randomTestcase(func(s, t int) int { count++; return s + t }, nil, 10000, 5000, 100)
     res, err := runAggregateTest(tc.op, tc.elems, tc.windows)
@@ -75,6 +75,43 @@ func TestRandomAggregate(t *testing.T) {
     }
     t.Logf("number of op applications: %d", count)
 }
+
+func TestAggregate_Fixed(t *testing.T) {
+    count := 0
+    tc := fixedTestcase(func(s, t int) int { count++; return s + t }, nil, 10000, 1000, 10)
+    res, err := runAggregateTest(tc.op, tc.elems, tc.windows)
+    if err != nil {
+        t.Errorf("%v", err)
+    } else if !slices.Equal(res, tc.expected) {
+        t.Errorf("expected %v, got %v", tc.expected, res)
+    }
+    t.Logf("number of op applications: %d", count)
+}
+
+func TestAggregateAssoc_Random(t *testing.T) {
+    count := 0
+    tc := randomTestcase(func(s, t int) int { count++; return s + t }, nil, 10000, 5000, 100)
+    res, err := runAggregateAssocTest(tc.op, tc.elems, tc.windows)
+    if err != nil {
+        t.Errorf("%v", err)
+    } else if !slices.Equal(res, tc.expected) {
+        t.Errorf("expected %v, got %v", tc.expected, res)
+    }
+    t.Logf("number of op applications: %d", count)
+}
+
+func TestAggregateAssoc_Fixed(t *testing.T) {
+    count := 0
+    tc := fixedTestcase(func(s, t int) int { count++; return s + t }, nil, 10000, 1000, 10)
+    res, err := runAggregateAssocTest(tc.op, tc.elems, tc.windows)
+    if err != nil {
+        t.Errorf("%v", err)
+    } else if !slices.Equal(res, tc.expected) {
+        t.Errorf("expected %v, got %v", tc.expected, res)
+    }
+    t.Logf("number of op applications: %d", count)
+}
+
 
 
 func TestAggregation(t *testing.T) {

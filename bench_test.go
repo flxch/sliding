@@ -13,13 +13,17 @@ import (
 const (
     streamlen = 10000 // stream length
     winsize   = 1000  // approximate window size
+    winshift  = 10    // window shift in each step
     chsize    = 10    // channel size (in and out)
     delay     = 10    // delay for aggregation operators
 )
 
-// Number of windows (equals the number of aggregated values).
-var winnums []int = []int{100, 200, 400, 800}
-
+var (
+    // Number of windows (equals the number of aggregated values).
+    winnums  []int = []int{100, 200, 400, 800}
+    // Window sizes.
+    winsizes []int = []int{100, 200, 400, 800}
+)
 
 // A function that keeps the CPU busy for some time.  Used in delay the
 // aggregation operators op and inv.
@@ -68,7 +72,43 @@ func BenchmarkInv(b *testing.B) {
 
 type aggregFn func (<-chan int, chan<- int, sliding.Op[int], sliding.Op[int], sliding.Next[sliding.Window])
 
-func BenchmarkAggregate(b *testing.B) {
+
+func BenchmarkAggregate_Fixed(b *testing.B) {
+    b.Logf("stream length: %d, winshift: %d", streamlen, winshift)
+    wrap := func(in <-chan int, out chan<- int, op, inv sliding.Op[int], next sliding.Next[sliding.Window]) {
+        sliding.Aggregate(in, out, op, next)
+    }
+    op := func(x, y int) int { f = fib(rand.IntN(delay)); return x + y }
+    for _, winsize := range winsizes {
+        b.Run(fmt.Sprintf("|win|=%d", winsize), func(b *testing.B) {
+            b.StopTimer()
+            b.ReportAllocs()
+            for i := 0; i < b.N; i++ {
+                run(b, fixedBenchmark(op, nil, streamlen, winsize, winshift), wrap)
+            }
+        })
+    }
+}
+
+func BenchmarkAggregateAssoc_Fixed(b *testing.B) {
+    b.Logf("stream length: %d, winshift: %d", streamlen, winshift)
+    wrap := func(in <-chan int, out chan<- int, op, inv sliding.Op[int], next sliding.Next[sliding.Window]) {
+        sliding.AggregateAssoc(in, out, op, next)
+    }
+    op := func(x, y int) int { f = fib(rand.IntN(delay)); return x + y }
+    for _, winsize := range winsizes {
+        b.Run(fmt.Sprintf("|win|=%d", winsize), func(b *testing.B) {
+            b.StopTimer()
+            b.ReportAllocs()
+            for i := 0; i < b.N; i++ {
+                run(b, fixedBenchmark(op, nil, streamlen, winsize, winshift), wrap)
+            }
+        })
+    }
+}
+
+
+func BenchmarkAggregate_Random(b *testing.B) {
     b.Logf("stream length: %d, window size: %d", streamlen, winsize)
     wrap := func(in <-chan int, out chan<- int, op, inv sliding.Op[int], next sliding.Next[sliding.Window]) {
         sliding.Aggregate(in, out, op, next)
@@ -85,7 +125,7 @@ func BenchmarkAggregate(b *testing.B) {
     }
 }
 
-func BenchmarkAggregateAssoc(b *testing.B) {
+func BenchmarkAggregateAssoc_Random(b *testing.B) {
     b.Logf("stream length: %d, window size: %d", streamlen, winsize)
     wrap := func(in <-chan int, out chan<- int, op, inv sliding.Op[int], next sliding.Next[sliding.Window]) {
         sliding.AggregateAssoc(in, out, op, next)
@@ -102,7 +142,7 @@ func BenchmarkAggregateAssoc(b *testing.B) {
     }
 }
 
-func BenchmarkAggregateInv(b *testing.B) {
+func BenchmarkAggregateInv_Random(b *testing.B) {
     b.Logf("stream length: %d, window size: %d", streamlen, winsize)
     op := func(x, y int) int { f = fib(rand.IntN(delay)); return x + y }
     inv := func(x, y int) int { f = fib(rand.IntN(delay)); return x - y }
@@ -116,6 +156,7 @@ func BenchmarkAggregateInv(b *testing.B) {
         })
     }
 }
+
 
 var global int
 func run(b *testing.B, tc testcase, aggregate aggregFn) {
